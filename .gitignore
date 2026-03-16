@@ -1,0 +1,18 @@
+# --- Secrets & Environment ---
+.env
+.venv/
+venv/
+ENV/
+
+# --- Python Caches ---
+**/__pycache__/
+*.py[cod]
+
+# --- Vector Databases & Local Data ---
+*_store/
+*_cache/
+*.sqlite3
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
