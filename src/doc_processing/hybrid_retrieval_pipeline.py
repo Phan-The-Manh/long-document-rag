@@ -18,7 +18,7 @@ def rewrite_query_triad(raw_query: str):
     prompt = f"""
     You are a technical search expert. Categorize the user's question into three search formats.
     
-    1. SEMANTIC: A formal, descriptive sentence for vector similarity search.
+    1. SEMANTIC: A formal, descriptive sentence for vector similarity search (ONLY using keywords in the question, just add filling word and rephrase).
     2. KEYWORD: A list of unique technical terms, part numbers, or error codes.
     3. METADATA: A JSON object containing:
        - "section": A likely header name (e.g., 'Maintenance', 'Troubleshooting').
@@ -54,7 +54,7 @@ def stage_1_hybrid_retriever(triad: dict, top_n: int = 15):
     Tier 2: Semantic + Metadata (Keyword dropped)
     Tier 3: Semantic Only (Pure Vector Fallback)
     """
-    db_path = "D:/doc_processing/chromadb_store"
+    db_path = "D:/long_doc_agent/data_store/chroma_store"
     client = chromadb.PersistentClient(path=db_path)
     
     # 1. Setup Embedding Function
@@ -142,7 +142,7 @@ def stage_1_hybrid_retriever(triad: dict, top_n: int = 15):
 
 # Initialize the Ranker globally so it only loads into memory once.
 # This uses a light but powerful model optimized for technical RAG.
-ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir="D:/doc_processing/rerank_cache")
+ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir="D:/long_doc_agent/data_store/rerank_cache")
 
 def stage_2_reranker(query: str, candidates: list, final_k: int = 5):
     """
@@ -185,5 +185,5 @@ def query_retrieval(user_input: str):
     print(f"Reranked to {len(final_context)} final candidates.")
     return final_context
 
-result = query_retrieval("what is ocr?")
-print("Final RAG Candidates:", result[0])
+# result = query_retrieval("what is ocr?")
+# print("Final RAG Candidates:", result[0])

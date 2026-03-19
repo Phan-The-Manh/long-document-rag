@@ -1,15 +1,25 @@
-from docling.document_converter import DocumentConverter
+from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.transforms.chunker import HybridChunker
 from typing import Dict, Any, Tuple, List
+from docling.datamodel.accelerator_options import AcceleratorOptions
+from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions
+from docling.datamodel.base_models import InputFormat
 
 def convert_source_to_chunks(source: str):
     """
     Converts a source document into a list of chunks using a HybridChunker.
     """
-    # 1. Initialize the converter
-    converter = DocumentConverter()
+
+    # 1. Setup Pipeline Options
+    pipeline_options = PdfPipelineOptions()
+    pipeline_options.do_ocr = True # OCR runs only where needed
     
-    # 2. Convert the source (PDF, Docx, etc.) to a document object
+    # 2. Use RapidOCR with ONNX (Best for Intel CPUs/iGPUs)
+    # Ensure you have 'rapidocr_onnxruntime' installed
+    converter = DocumentConverter(
+        format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
+    )
+    
     print(f"Converting document from {source}...")
     result = converter.convert(source)
     doc = result.document
@@ -66,47 +76,6 @@ def build_enriched_chunk_and_metadata(chunk, source_name: str, chunk_index: int)
     }
 
     return new_chunk_text, metadata
-
-# def docling_chunks_to_langchain_docs(chunks, source_name: str) -> List[Document]:
-#     """
-#     Convert Docling chunks into LangChain Documents.
-#     """
-#     docs = []
-
-#     for i, chunk in enumerate(chunks):
-#         text = getattr(chunk, "text", "").strip()
-#         if not text:
-#             continue
-
-#         metadata = build_metadata_from_chunk(chunk, source_name, i)
-
-#         docs.append(
-#             Document(
-#                 page_content=text,
-#                 metadata=metadata
-#             )
-#         )
-#         print(f"Created LangChain Document for chunk {i} with metadata!")
-
-#     return docs
-
-# def source_to_langchain_docs(source_name: str) -> List[Document]:
-#     """
-#     Orchestrates the full pipeline:
-#     1. Converts source to document.
-#     2. Chunks the document using HybridChunker.
-#     3. Converts chunks into a list of LangChain Documents with metadata.
-#     """
-#     # 1. Convert source to chunks (using the function we wrote earlier)
-#     # Note: Ensure convert_source_to_chunks is defined in your script
-#     chunks = convert_source_to_chunks(source_name)
-    
-#     # 2. Convert those Docling chunks into LangChain Documents
-#     print(f"Mapping {len(chunks)} chunks to LangChain Documents...")
-#     langchain_docs = docling_chunks_to_langchain_docs(chunks, source_name)
-    
-#     print(f"Successfully processed {source_name}. Total Docs: {len(langchain_docs)}")
-#     return langchain_docs
 
 def prepare_source_for_chroma(source_path: str, source_name: str) -> Dict[str, List[Any]]:
     """

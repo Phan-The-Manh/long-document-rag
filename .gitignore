@@ -1,18 +1,39 @@
 # --- Secrets & Environment ---
 .env
+.env.local
 .venv/
 venv/
 ENV/
+lib/
+bin/
 
-# --- Python Caches ---
-**/__pycache__/
+# --- Python Caches & Build ---
+__pycache__/
 *.py[cod]
+*$py.class
+.pytest_cache/
+.ipynb_checkpoints/
+dist/
+build/
+*.egg-info/
 
 # --- Vector Databases & Local Data ---
-*_store/
-*_cache/
+# This ignores your specific data folders but keeps the root clean
+data_store/
+chromadb_store/
+faiss_store/
+rerank_cache/
 *.sqlite3
+*.log
+
+# --- Docling / Processing Artifacts ---
+# Docling sometimes downloads models or stores temp artifacts
+.cache/
+docling_models/
 
 # --- OS Specific ---
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db
+desktop.ini

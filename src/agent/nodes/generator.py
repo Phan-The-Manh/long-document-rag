@@ -3,29 +3,59 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import AIMessage
 from src.agent.state import AgentState
+from dotenv import load_dotenv
+load_dotenv()
 
 # 1. Initialize the Model
 llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
 # 2. Define Prompts
 gen_prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant. Answer the question based on your general knowledge and the conversation history."),
-    MessagesPlaceholder(variable_name="history"),
+    ("system", "You are a helpful assistant. Answer the question based on your general knowledge."),
     ("human", "{input}"),
 ])
 
-gen_prompt_with_context = ChatPromptTemplate.from_messages([
-    ("system", """You are a strictly grounded assistant. 
-    1. Use the Context below to answer the user's question, including metadata.
-    2. If the Context is empty, or if the answer is not contained within the Context, 
-       respond exactly with: "I am sorry, I do not have information about that in my documents."
-    3. Do NOT use your general knowledge to answer. 
-    4. Stay focused on the provided facts.
+# gen_prompt_with_context = ChatPromptTemplate.from_messages([
+#     ("system", """You are a helpful Research Assistant. 
+#     Your goal is to answer the user's question using the provided Context.
+#     ### Input: {input}
+#     ### Context:{context}
+#     1. Read QUESTION and THEN extract information needed in CONTEXT.
+#     2. You may use your internal knowledge to explain or synthesize the technical terms found in the Context, but do not contradict the provided text.
+#     3. If the Context contains no relevant information at all to the topic, then and only then, state that you don't have enough information in your documents.
+#     4. Cite the Section or Source for every time providing specific technical details.
+#     """),
+#     MessagesPlaceholder(variable_name="history"),
+# ])
 
+gen_prompt_with_context = ChatPromptTemplate.from_messages([
+    ("system", """
+    You are a highly accurate AI assistant designed for question answering over provided context.
+    Rules:
+    1. Use ONLY the provided context to answer the question, provide sources.
+    2. Do NOT use prior knowledge or make assumptions beyond the context.
+    3. You may rephrase, summarize, and reason, but all facts must be grounded in the context.
+    4. If the answer cannot be found in the context, say: "I don't have enough information to answer this."
+    5. Be concise but complete.
+    6. For numerical or table-based questions:
+    - Extract values carefully
+    - Perform correct calculations if needed
+    7. For multi-step reasoning:
+    - Combine information from multiple parts of the context
+    - Ensure logical consistency
+
+    Output format:
+    - Direct answer first
+    - Then brief explanation (only if needed)
+    """),
+
+    ("human", """
     Context:
-    {context}"""),
-    MessagesPlaceholder(variable_name="history"),
-    ("human", "{input}"),
+    {context}
+
+    Question: 
+    {input}
+    """)
 ])
 
 # 3. The Pipe
@@ -48,12 +78,12 @@ def generator_node(state: AgentState):
     # 'history' is everything except the latest message
     # 'input' is the latest user message
     inputs = {
-        "history": messages[:-1],
         "input": messages[-1].content
     }
 
     # 3. Logic Branching
     if is_search_required:
+        print("Generating with context!\n")
         if docs:
             context_parts = []
             for d in docs:
@@ -73,11 +103,18 @@ def generator_node(state: AgentState):
         else:
             # Triggers the "I do not know" logic in your prompt
             context_str = ""
-
         inputs["context"] = context_str
+
+        formatted_prompt = gen_prompt_with_context.format(
+            context=context_str, 
+            input=messages[-1].content
+        )
+        print(formatted_prompt) # If this shows "Context: " followed by nothing, that's your bug!
+
         answer_text = generator_with_retrieval_chain.invoke(inputs)
         
     else:
+        print("Generating without context (general knowledge)!\n")
         # --- PATH: GENERAL GENERATOR ---
         # is_search_required is False
         answer_text = general_generator_chain.invoke(inputs)
