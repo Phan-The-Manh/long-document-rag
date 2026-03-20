@@ -1,40 +1,62 @@
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.transforms.chunker import HybridChunker
 from typing import Dict, Any, Tuple, List
-from docling.datamodel.accelerator_options import AcceleratorOptions
 from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions
 from docling.datamodel.base_models import InputFormat
+import time
+import pypdfium2 as pdfium
+import os
 
-def convert_source_to_chunks(source: str):
-    """
-    Converts a source document into a list of chunks using a HybridChunker.
-    """
+def convert_source_to_chunks(source: str, total_pages: int = 121, window_size: int = 10, overlap: int = 2):
+    # Enforce 1 thread to prevent memory spikes on your 20-thread CPU
+    os.environ["DOCLING_NUM_THREADS"] = "1"
+    start_time = time.perf_counter()
 
-    # 1. Setup Pipeline Options
-    pipeline_options = PdfPipelineOptions()
-    pipeline_options.do_ocr = True # OCR runs only where needed
-    
-    # 2. Use RapidOCR with ONNX (Best for Intel CPUs/iGPUs)
-    # Ensure you have 'rapidocr_onnxruntime' installed
+    # 1. Minimalist Pipeline
+    pipeline_options = PdfPipelineOptions(
+        do_ocr=True,
+        do_table_structure=True,
+        generate_page_images=False,
+        generate_picture_images=False,
+    )
+
     converter = DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
     )
-    
-    print(f"Converting document from {source}...")
-    result = converter.convert(source)
-    doc = result.document
-    print("Conversion complete!")
+    chunker = HybridChunker(max_tokens=512, merge_peers=True)
 
-    # 3. Initialize the chunker (adjust max_tokens as needed)
-    chunker = HybridChunker(max_tokens=512)
-    
-    # 4. Generate chunks and return as a list
-    print("Generating chunks...")
-    chunks = list(chunker.chunk(doc))
-    print(f"Created {len(chunks)} chunks.")
-    
-    return chunks
+    all_chunks = []
 
+    # 2. String Slicing: Trigger Window only for PDFs
+    if source[-4:].lower() == ".pdf":
+        print(f"📄 PDF Detected. Processing {total_pages} pages in slices...")
+        
+        current_start = 1
+        step = window_size - overlap
+
+        while current_start <= total_pages:
+            current_end = min(current_start + window_size - 1, total_pages)
+            print(f"--- Window: {current_start} to {current_end} ---")
+            
+            # Convert only this specific range
+            result = converter.convert(source, page_range=(current_start, current_end))
+            all_chunks.extend(list(chunker.chunk(result.document)))
+            
+            if current_end == total_pages:
+                break
+            
+            current_start += step
+            
+    else:
+        # For Word, PPT, etc. (where total_pages is ignored by Docling)
+        print(f"📝 Non-PDF ({source[-5:]}) detected. Processing in one shot...")
+        result = converter.convert(source)
+        all_chunks = list(chunker.chunk(result.document))
+
+    duration = time.perf_counter() - start_time
+    print(f"✅ Created {len(all_chunks)} chunks in {duration:.2f} seconds.")
+    
+    return all_chunks
 
 def build_enriched_chunk_and_metadata(chunk, source_name: str, chunk_index: int) -> Tuple[str, Dict[str, Any]]:
     """
