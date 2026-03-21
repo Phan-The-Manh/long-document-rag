@@ -1,3 +1,5 @@
+import json
+
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.transforms.chunker import HybridChunker
 from typing import Dict, Any, Tuple, List
@@ -101,15 +103,16 @@ def build_enriched_chunk_and_metadata(chunk, source_name: str, chunk_index: int)
 
 def prepare_source_for_chroma(source_path: str, source_name: str) -> Dict[str, List[Any]]:
     """
-    Orchestrates the full pipeline:
-    1. Parses & Chunks the file (Docling)
-    2. Enriches text with Breadcrumbs/Page context
-    3. Formats data for direct ChromaDB ingestion
+    Orchestrates the full pipeline and saves the results to disk.
     """
+    # Define the store path
+    STORE_DIR = "D:/long_doc_agent/data_store/chunks_store"
+    os.makedirs(STORE_DIR, exist_ok=True)
+    
     # 1. Get raw chunks from Docling
     raw_chunks = convert_source_to_chunks(source_path)
     
-    # 2. Prepare containers for Chroma
+    # 2. Prepare containers
     enriched_documents = []
     metadatas = []
     ids = []
@@ -118,7 +121,6 @@ def prepare_source_for_chroma(source_path: str, source_name: str) -> Dict[str, L
 
     # 3. Process each chunk
     for i, chunk in enumerate(raw_chunks):
-        # Use your enrichment function
         enriched_text, metadata = build_enriched_chunk_and_metadata(
             chunk, 
             source_name=source_name, 
@@ -129,10 +131,20 @@ def prepare_source_for_chroma(source_path: str, source_name: str) -> Dict[str, L
         metadatas.append(metadata)
         ids.append(metadata["chunk_id"])
 
-    print(f"Successfully prepared {source_name} for ingestion.")
-
-    return {
+    # --- NEW: STORAGE LOGIC ---
+    output_data = {
         "documents": enriched_documents,
         "metadatas": metadatas,
         "ids": ids
     }
+
+    # Save as a JSON file named after the source
+    # e.g., D:/long_doc_agent/data_store/chunks_store/my_document.json
+    save_path = os.path.join(STORE_DIR, f"{source_name}_enriched.json")
+    
+    with open(save_path, "w", encoding="utf-8") as f:
+        json.dump(output_data, f, indent=4, ensure_ascii=False)
+
+    print(f"✅ Successfully prepared {source_name} and saved to: {save_path}")
+
+    return output_data
