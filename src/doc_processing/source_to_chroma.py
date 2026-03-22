@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def save_chunks_to_chroma(ingestion_package: dict):
-    db_path = "D:/long_doc_agent/data_store/chroma_store"
+    db_path = "D:/long_doc_agent/data/chroma_store"
 
     # 1. PHYSICAL WIPE
     # Instead of just client.reset(), we delete the actual folder
@@ -47,6 +47,7 @@ def save_chunks_to_chroma(ingestion_package: dict):
     )
     
     return collection
+
 
 def process_and_save_full_pipeline(source_path: str, source_name: str):
     """

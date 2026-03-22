@@ -6,11 +6,11 @@ from src.doc_processing.source_to_chroma import process_and_save_full_pipeline
 from src.agent.graph import app 
 
 def main():
-    print("--- 🤖 LONG_DOC_AGENT ACTIVE ---")
+    print("--- LONG_DOC_AGENT ACTIVE ---")
     print("(Press Enter to skip if you don't have a document link)")
     
     # 1. Optional Document Ingestion
-    doc_link = input("🔗 Document link/path: ").strip()
+    doc_link = input("Document link/path: ").strip()
     source_name = "user_upload"
     
     if doc_link:
@@ -42,7 +42,7 @@ def main():
         if not user_input:
             continue
 
-        print("🧠 Thinking...")
+        print("Thinking...")
         try:
             # Wrap user input as a HumanMessage for consistency
             # Invoke the graph
@@ -56,7 +56,7 @@ def main():
             print(f"\nAgent: {response}")
             
         except Exception as e:
-            print(f"⚠️ Agent Error: {e}")
+            print(f"Agent Error: {e}")
             # Printing the full error for debugging
             import traceback
             traceback.print_exc()

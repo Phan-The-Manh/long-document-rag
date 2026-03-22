@@ -5,10 +5,9 @@ from dataclasses import dataclass
 
 import pandas as pd
 from dotenv import load_dotenv
-from openai import OpenAI
 
-# Load environment variables (ensure OPENAI_API_KEY is in your .env)
-load_dotenv()
+# --- IMPORT YOUR CUSTOM CLIENT ---
+from src.llm_clients.openai import client as openai_client
 
 # MODERN RAGAS CORE IMPORTS
 from ragas import EvaluationDataset, SingleTurnSample, MultiTurnSample
@@ -18,6 +17,9 @@ from ragas.testset.persona import Persona
 from ragas.testset.synthesizers.multi_hop.base import MultiHopQuerySynthesizer, MultiHopScenario
 from ragas.testset.synthesizers.prompts import ThemesPersonasInput, ThemesPersonasMatchingPrompt
 from ragas.testset.synthesizers.single_hop import SingleHopQuerySynthesizer, SingleHopScenario
+
+# Load environment variables
+load_dotenv()
 
 # ==========================================
 # 1. CUSTOM SYNTHESIZERS
@@ -36,7 +38,7 @@ class MyMultiHopQuery(MultiHopQuerySynthesizer):
         )
 
         if not results:
-            print("⚠️ No Multi-Hop relationships found. Check your KG relationship types.")
+            print("No Multi-Hop relationships found. Check your KG relationship types.")
             return []
 
         num_sample_per_triplet = max(1, n // len(results))
@@ -64,7 +66,7 @@ class MyMultiHopQuery(MultiHopQuerySynthesizer):
                     data=prompt_input, llm=self.llm, callbacks=callbacks
                 )
 
-                # 🛡️ THE FIX: 100% Positional Arguments (Immune to naming changes)
+                # THE FIX: 100% Positional Arguments (Immune to naming changes)
                 base_scenarios = self.prepare_combinations(
                     [node_a, node_b],                   # Arg 1: nodes
                     [themes],                           # Arg 2: terms/themes
@@ -91,7 +93,7 @@ class MySingleHopQuerySynthesizer(SingleHopQuerySynthesizer):
         
         nodes = [node for node in knowledge_graph.nodes if node.properties.get("entities")]
         if not nodes:
-            print("⚠️ No Single-Hop nodes found with the 'entities' property.")
+            print("No Single-Hop nodes found with the 'entities' property.")
             return []
         
         scenarios = []
@@ -110,7 +112,7 @@ class MySingleHopQuerySynthesizer(SingleHopQuerySynthesizer):
                 data=prompt_input, llm=self.llm, callbacks=callbacks
             )
             
-            # 🛡️ THE FIX: 100% Positional Arguments
+            # THE FIX: 100% Positional Arguments
             base_scenarios = self.prepare_combinations(
                 node,                               # Arg 1: node
                 themes,                             # Arg 2: terms/themes
@@ -130,12 +132,12 @@ async def generate_ragas_dataset(kg, personas, llm, n_total=20):
     m_hop = MyMultiHopQuery(llm=llm)
     s_hop = MySingleHopQuerySynthesizer(llm=llm)
 
-    print(f"🎨 Phase 1: Planning {n_total} scenarios...")
+    print(f"Phase 1: Planning {n_total} scenarios...")
     m_scenarios = await m_hop._generate_scenarios(n_total // 2, kg, personas, [])
     s_scenarios = await s_hop._generate_scenarios(n_total // 2, kg, personas, [])
     all_scenarios = m_scenarios + s_scenarios
 
-    print(f"✍️ Phase 2: Writing Q&A pairs for {len(all_scenarios)} scenarios...")
+    print(f"Phase 2: Writing Q&A pairs for {len(all_scenarios)} scenarios...")
     tasks = [
         (m_hop if isinstance(s, MultiHopScenario) else s_hop)._generate_sample(s, callbacks=[])
         for s in all_scenarios
@@ -158,21 +160,17 @@ async def generate_ragas_dataset(kg, personas, llm, n_total=20):
 # ==========================================
 
 async def run_generation(my_kg):
-    # Setup standard OpenAI client via Ragas factory
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY is missing from environment variables.")
-        
-    llm = llm_factory("gpt-4o-mini", client=OpenAI(api_key=api_key))
+    # --- USE CENTRALIZED CLIENT ---
+    llm = llm_factory("gpt-4o-mini", client=openai_client)
 
-    # Define Personas using the updated Pydantic validation (role_description)
+    # Define Personas
     personas = [
         Persona(name="Junior Developer", role_description="Needs simple 'how-to' guides and definitions."),
         Persona(name="Solutions Architect", role_description="Asks about system scalability and deep dependencies.")
     ]
 
     # Setup directories securely
-    output_dir = r"D:\long_doc_agent\data_store\eval_dataset_store"
+    output_dir = r"D:\long_doc_agent\data\eval_dataset_store"
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, "testset_output.csv")
 
@@ -183,22 +181,22 @@ async def run_generation(my_kg):
     df = dataset.to_pandas()
     df.to_csv(output_file, index=False)
     
-    print(f"\n✅ Success! Saved {len(df)} questions to: {output_file}")
+    print(f"\nSuccess! Saved {len(df)} questions to: {output_file}")
     return df
 
 async def generate_test_set():
-    kg_path = r"D:\long_doc_agent\data_store\chunks_store\user_upload_enriched_kg.json"
+    kg_path = r"D:\long_doc_agent\data\chunks_store\user_upload_enriched_kg.json"
     
     if not os.path.exists(kg_path):
-        print(f"❌ Error: Could not find the KG file at {kg_path}")
+        print(f"Error: Could not find the KG file at {kg_path}")
         return
 
-    print(f"📂 Loading enriched Knowledge Graph from JSON...")
+    print(f"Loading enriched Knowledge Graph from JSON...")
     try:
         my_kg = KnowledgeGraph.load(kg_path)
-        print(f"✅ KG Loaded: {len(my_kg.nodes)} nodes and {len(my_kg.relationships)} relationships found.")
+        print(f"KG Loaded: {len(my_kg.nodes)} nodes and {len(my_kg.relationships)} relationships found.")
     except Exception as e:
-        print(f"❌ Failed to parse JSON KG: {e}")
+        print(f"Failed to parse JSON KG: {e}")
         return
 
     await run_generation(my_kg)

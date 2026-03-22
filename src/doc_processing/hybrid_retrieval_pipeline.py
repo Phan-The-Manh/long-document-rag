@@ -54,7 +54,7 @@ def stage_1_hybrid_retriever(triad: dict, top_n: int = 15):
     Tier 2: Semantic + Metadata (Keyword dropped)
     Tier 3: Semantic Only (Pure Vector Fallback)
     """
-    db_path = "D:/long_doc_agent/data_store/chroma_store"
+    db_path = "D:/long_doc_agent/data/chroma_store"
     client = chromadb.PersistentClient(path=db_path)
     
     # 1. Setup Embedding Function
@@ -75,6 +75,13 @@ def stage_1_hybrid_retriever(triad: dict, top_n: int = 15):
     keyword_list = triad.get('keyword', "").replace(',', ' ').split()
     or_filters = [{"$contains": word} for word in keyword_list]
     
+    # 🛠️ THE FIX: Safely build the Document (Keyword) filter
+    where_doc = None
+    if len(or_filters) > 1:
+        where_doc = {"$or": or_filters}
+    elif len(or_filters) == 1:
+        where_doc = or_filters[0]  # Just pass the single dictionary directly
+
     # Sanitize Metadata
     section = triad['metadata'].get('section')
     if str(section).lower() in ["null", "none", ""]: section = None
@@ -100,7 +107,8 @@ def stage_1_hybrid_retriever(triad: dict, top_n: int = 15):
             query_texts=[semantic_q],
             n_results=top_n,
             where=where_meta if use_meta else None,
-            where_document={"$or": or_filters} if (use_keyword and or_filters) else None,
+            # 🛠️ THE FIX: Pass our safely constructed 'where_doc'
+            where_document=where_doc if use_keyword else None, 
             include=["documents", "metadatas"]
         )
 
@@ -142,7 +150,7 @@ def stage_1_hybrid_retriever(triad: dict, top_n: int = 15):
 
 # Initialize the Ranker globally so it only loads into memory once.
 # This uses a light but powerful model optimized for technical RAG.
-ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir="D:/long_doc_agent/data_store/rerank_cache")
+ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir="D:/long_doc_agent/data/rerank_cache")
 
 def stage_2_reranker(query: str, candidates: list, final_k: int = 5):
     """
