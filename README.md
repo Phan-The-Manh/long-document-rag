@@ -54,12 +54,154 @@ The system is orchestrated using **LangGraph** to manage state and complex decis
 * **Stateful Iteration:** Using a directed graph, the agent can maintain the state of the search and "loop back" to refine its query if the initial retrieval is insufficient.
 * **Self-Correction:** The agent evaluates the retrieved evidence against the user's question before generating a response, significantly reducing the risk of hallucination in dense, 100-page contexts.
 
-3. System Architecture
-   Use a clear flow (or a simple ASCII diagram) to show how data moves:
+### Evaluation & Testing
+The pipeline is evaluated using the **RAGAS** framework and a **Knowledge Graph** synthetic benchmarking approach to ensure accuracy.
 
-4. Key Design Decisions & Trade-offs
+* **Retriever Performance**
+    * **Context Precision:** Measures the signal-to-noise ratio in retrieved chunks; ensures top results are relevant.
+    * **Context Recall:** Verifies that all information required to answer the query was successfully found.
 
-5. Implementation Details (The "How-To")
+* **Generation Quality**
+    * **Faithfulness:** Quantifies "Hallucination" by checking if the answer is derived *only* from retrieved context.
+    * **Answer Relevance:** Measures how directly the response addresses the user's specific query.
+    * **Answer Correctness:** Compares the final output against a ground-truth **Golden Dataset**.
+    * *Note: Generation evaluation requires high-tier reasoning models and is currently in partial testing.*
+
+* **Knowledge Graph & Synthetic Benchmarking**
+    * **Entity Mapping:** Extracts relationships (e.g., `NVIDIA` → `PRODUCT` → `H100 GPU`) to map document logic.
+    * **Golden Dataset Generation:**
+        * **Single-Hop:** Simple data lookups (e.g., "What was the FY25 revenue?").
+        * **Multi-Hop:** Reasoning across multiple tables (e.g., "Compare R&D spend to Data Center growth").
+    * **Benchmarking:** Used as the ground truth to verify the Retriever and Generation.
+
+---
+
+## 3. System Architecture
+```mermaid
+graph LR
+    %% Subgraph Styling
+    subgraph Ingestion ["<b>INGESTION (OFFLINE)</b>"]
+        A[Document] --> B[Parsing]
+        B --> C[Chunking]
+        C --> D[Enriching]
+        D --> E[Embedding]
+    end
+
+    subgraph Store ["<b>VECTOR STORE</b>"]
+        E --> F[(ChromaDB)]
+    end
+
+    subgraph Query ["<b>QUERY PIPELINE (ONLINE)</b>"]
+        direction TB
+        G[User Query] --> H{Router}
+        H -->|Retrieve| I[Retriever]
+        H -->|No Retrieve| J[LLM Knowledge]
+        
+        F -.->|Context| I
+        I --> K[Generator]
+        J --> K
+        
+        K --> M[Answer]
+    end
+
+    %% Visual Styling
+    style F fill:#f9f,stroke:#333,stroke-width:2px
+    style H fill:#bbf,stroke:#333
+    style M font-weight:bold,stroke-width:3px,fill:#bfb
+```
+---
+## 4. Key Design Decisions & Trade-offs
+### 4.1 Data Ingestion & Parsing
+* **Decision:** Used **Docling** (Layout-Aware) over basic Python libraries (e.g., *PyMuPDF*).
+* **Trade-off:** Docling is **slower and CPU-intensive**, but it accurately reconstructs complex **financial tables**.
+* **Optimization:** **Ignored images** to reduce VRAM usage and processing time.
+
+### 4.2 Processing Strategy: Sliding Window
+* **Decision:** Implemented a **10-page sliding window** for parsing.
+* **Trade-off:** Increases total "walking" time through the document but keeps **RAM usage low** and stable, preventing crashes on high-page-count documents.
+* **Result:** Ensures "Contextual DNA" (metadata) is consistently captured across chunk boundaries.
+
+### 4.3 Storage & Retrieval: ChromaDB
+* **Decision:** Selected **ChromaDB** for the Vector Store.
+* **Trade-off:** * **Pros:** Fast setup, low latency for local retrieval, and easy metadata filtering.
+    * **Cons:** Limited horizontal scaling compared to cloud-native databases (e.g., Pinecone).
+
+---
+
+### Summary Table: Decision Matrix
+
+| Component | Choice | Trade-off | Benefit |
+| :--- | :--- | :--- | :--- |
+| **Parser** | **Docling** | Slower speed | High Table Accuracy |
+| **Images** | **Excluded** | Loses Visual Data | ~70% Less Memory |
+| **Database** | **ChromaDB** | Local Scaling | Instant Setup/Search |
+
+---
+
+## 5. Implementation Details
+### 5.1 Prerequisites
+* **Python:** 3.10 or higher.
+* **Storage:** ~2GB free space for models and persistent vector database.
+* **Memory:** 16GB RAM recommended for Docling's layout-aware parsing.
+
+### 5.2 Environment Configuration
+It is highly recommended to use a virtual environment to avoid dependency conflicts.
+
+```bash
+# Create a virtual environment
+python -m venv venv
+
+# Activate the environment (Windows)
+.\venv\Scripts\activate
+
+# Activate the environment (Mac/Linux)
+source venv/bin/activate
+```
+
+### 5.3 Installing Dependencies
+Ensure your virtual environment is active, then install all required libraries using the provided requirements file.
+
+```bash
+# Upgrade pip to ensure the latest package compatibility
+python -m pip install --upgrade pip
+
+# Install all project dependencies
+pip install -r requirements.txt
+```
+
+### 5.4 Run Chatbot
+Execute the main entry point to start the interactive session.
+
+```bash
+# Run the application as a module or direct script
+python main.py
+```
+image
+
+### 5.5 Run Evaluation
+-Build Knowledge Graph from chunks
+```bash
+python -m src.evaluation.kg_builder
+```
+image
+
+-Generate Golden Dataset
+```bash
+python -m src.evaluation.data_generator
+```
+image
+
+-Evaluating retriever
+```bash
+python -m src.evaluation.retrieval_eval
+```
+image
+
+-Evaluating generation
+```bash
+python -m src.evaluation.generation_eval
+```
+image
 
 6. Evaluation & Testing
 
