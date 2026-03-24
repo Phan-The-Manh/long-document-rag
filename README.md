@@ -7,7 +7,7 @@ An AI system engineered for high-precision Q&A on documents exceeding 100 pages 
 ## 1. Project Overview
 
 ### 🎯 The Challenge
-Building a system for 100+ page documents that is:
+Building a system for single 100+ page documents that is:
 * **Accurate:** Directly derived from the source.
 * **Grounded:** Every answer includes page and section citations.
 * **Robust:** Handles dense text, tables and narrative repetition.
@@ -295,14 +295,14 @@ The transition from a 20-page technical paper to a 130-page financial report rev
 ## 8. Future Roadmap
 To move the **Long-Doc-Agent** from a Proof of Concept to a production-ready engine, the following enhancements are prioritized:
 
-### 9.1 Advanced Reasoning & Retrieval
+### 8.1 Advanced Reasoning & Retrieval
 * **Multi-Hop Reasoning:** Implement a **Re-Act** agentic loop to navigate the Knowledge Graph across multiple nodes for complex, non-linear queries.
 * **Query Decomposition:** Break down single user prompts into sub-queries to fetch distinct context chunks before final synthesis.
 
-### 9.2 Resilience & State Management
+### 8.2 Resilience & State Management
 * **Strategic Checkpointing:** Implement a persistent state layer (e.g., **Redis** or **SQLite**) to cache intermediate KG construction steps, allowing the system to resume processing if a 100+ page job fails mid-way.
 
-### 9.3 Cost & Efficiency Optimization
+### 8.3 Cost & Efficiency Optimization
 * **Token Budgeting:** Integrate middleware to track and limit API usage per session.
 * **Model Tiering:** Route simple lookups to "light" models (e.g., GPT-4o-mini) while reserving high-tier models for complex KG-driven reasoning.
 ---
