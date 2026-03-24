@@ -12,6 +12,12 @@ from ragas.llms import LangchainLLMWrapper
 
 load_dotenv()
 
+# --- DYNAMIC PATH SETUP ---
+# Gets the directory where this script is saved
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Builds path relative to the script location
+CHUNKS_STORE_DIR = os.path.join(BASE_DIR, "data", "chunks_store")
+
 # --- 1. CORE UTILITIES ---
 
 def load_chunks(path: str):
@@ -113,6 +119,7 @@ def save_and_verify_kg(kg: KnowledgeGraph, output_path: str, expected_count: int
                     print("ALERT: Ragas .save() stripped your custom properties!")
             except json.JSONDecodeError:
                 print("ALERT: Saved file is not valid JSON!")
+
 # --- 5. MAIN WORKFLOW ---
 
 def build_kg_from_chunks_path(chunks_path: str, llm_wrapper):
@@ -159,5 +166,10 @@ if __name__ == "__main__":
     eval_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
     evaluator_wrapper = LangchainLLMWrapper(eval_llm)
 
-    CHUNKS_PATH = "D:/long_doc_agent/data/chunks_store/user_upload_enriched.json"
-    build_kg_from_chunks_path(CHUNKS_PATH, evaluator_wrapper)
+    # Resolve chunks file path dynamically
+    CHUNKS_PATH = os.path.join(CHUNKS_STORE_DIR, "user_upload_enriched.json")
+    
+    if os.path.exists(CHUNKS_PATH):
+        build_kg_from_chunks_path(CHUNKS_PATH, evaluator_wrapper)
+    else:
+        print(f"❌ Error: Could not find chunks file at {CHUNKS_PATH}")

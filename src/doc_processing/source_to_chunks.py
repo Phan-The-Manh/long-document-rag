@@ -1,6 +1,5 @@
 import json
 import shutil
-
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.transforms.chunker import HybridChunker
 from typing import Dict, Any, Tuple, List
@@ -11,7 +10,13 @@ import time
 import os
 import requests
 
-def ensure_local_path(source: str, target_dir: str = r"D:\long_doc_agent\data\uploaded_file"):
+# --- Dynamic Path Logic ---
+# Sets the base directory to the folder where this script resides
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(BASE_DIR, "data", "uploaded_file")
+STORE_DIR = os.path.join(BASE_DIR, "data", "chunks_store")
+
+def ensure_local_path(source: str, target_dir: str = UPLOAD_DIR):
     if not os.path.exists(target_dir):
         os.makedirs(target_dir, exist_ok=True)
         
@@ -32,7 +37,6 @@ def ensure_local_path(source: str, target_dir: str = r"D:\long_doc_agent\data\up
             return local_destination
         else:
             raise FileNotFoundError(f"❌ File not found at: {clean_source}")
-        
         
 def parse_pdf_to_docs(source_path: str, window_size: int = 10, overlap: int = 2):
     """
@@ -94,8 +98,6 @@ def build_enriched_chunk_and_metadata(chunk, source_name: str, chunk_index: int)
     Returns: (new_chunk_text, metadata_dict)
     """
     # 1. Extract and format Page Numbers
-    # We convert the list to a comma-separated string because Chroma filters 
-    # prefer primitive types (str, int, float) over lists.
     pages_list = sorted({
         prov.page_no
         for item in getattr(chunk.meta, "doc_items", [])
@@ -106,12 +108,10 @@ def build_enriched_chunk_and_metadata(chunk, source_name: str, chunk_index: int)
     first_page = pages_list[0] if pages_list else 0
 
     # 2. Handle Heading Hierarchy (Breadcrumbs)
-    # Docling stores hierarchy in headings; we join them for a 'path'
     headings_list = getattr(chunk.meta, "headings", [])
     breadcrumb = " > ".join(headings_list) if headings_list else "General"
 
     # 3. Create the New Chunk Text (Prepend Logic)
-    # This is what gets embedded. It ensures the 'context' is weighted by the model.
     new_chunk_text = (
         f"SECTION: {breadcrumb}\n"
         f"PAGES: {pages_str}\n"
@@ -131,15 +131,9 @@ def build_enriched_chunk_and_metadata(chunk, source_name: str, chunk_index: int)
 
 def prepare_source_for_chroma(input_source: str, source_name: str) -> Dict[str, List[Any]]:
     """
-    Orchestrates the full pipeline: 
-    1. Resolve Source (URL or Local) 
-    2. Parse (Sliding Window) 
-    3. Chunk (No De-duplication)
-    4. Enrich 
-    5. Save
+    Orchestrates the full pipeline.
     """
-    # 1. Resolve Path (Handles both URL and existing local disk paths)
-    UPLOAD_DIR = r"D:\long_doc_agent\data\uploaded_file"
+    # 1. Resolve Path
     try:
         source_path = ensure_local_path(input_source, target_dir=UPLOAD_DIR)
     except Exception as e:
@@ -147,19 +141,17 @@ def prepare_source_for_chroma(input_source: str, source_name: str) -> Dict[str, 
         return {}
 
     # 2. Setup storage
-    STORE_DIR = r"D:\long_doc_agent\data\chunks_store"
     os.makedirs(STORE_DIR, exist_ok=True)
     
-    # 3. Step 1: Parse PDF into Docling Document objects (The "Slow" Part)
+    # 3. Step 1: Parse PDF
     print(f"Starting PDF Conversion for: {source_name}")
     doc_objects = parse_pdf_to_docs(source_path, window_size=10, overlap=2)
     
-    # 4. Step 2: Convert Document objects into text chunks (The "Fast" Part)
-    # We are NOT de-duplicating here as per your requirement
+    # 4. Step 2: Chunk
     print(f"Chunking documents...")
     raw_chunks = chunk_documents(doc_objects, max_tokens=480)
     
-    # 5. Prepare containers for Chroma format
+    # 5. Prepare containers
     enriched_documents = []
     metadatas = []
     ids = []
@@ -168,7 +160,6 @@ def prepare_source_for_chroma(input_source: str, source_name: str) -> Dict[str, 
 
     # 6. Process and Enrich
     for i, chunk in enumerate(raw_chunks):
-        # build_enriched_chunk_and_metadata creates the text and metadata dict
         enriched_text, metadata = build_enriched_chunk_and_metadata(
             chunk, 
             source_name=source_name, 

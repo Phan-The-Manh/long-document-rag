@@ -21,6 +21,12 @@ from ragas.testset.synthesizers.single_hop import SingleHopQuerySynthesizer, Sin
 # Load environment variables
 load_dotenv()
 
+# --- DYNAMIC PATH SETUP ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Points to your data directories relative to the script location
+KG_STORE_DIR = os.path.join(BASE_DIR, "data", "chunks_store")
+EVAL_STORE_DIR = os.path.join(BASE_DIR, "data", "eval_dataset_store")
+
 # ==========================================
 # 1. CUSTOM SYNTHESIZERS
 # ==========================================
@@ -167,28 +173,23 @@ async def run_generation(my_kg):
     personas = [
         Persona(name="Junior Developer", role_description="Needs simple 'how-to' guides and definitions."),
         Persona(name="Solutions Architect", role_description="Asks about system scalability and deep dependencies."),
-        # The "Reasoning & Calculation" Role: Quantitative Analyst
         Persona(
             name="Quantitative Auditor", 
             role_description="Performs cross-page data validation, trend analysis (CAGR), and multi-step calculations. Does not accept surface-level answers; requires raw numbers and the logic used to derive the result."
         ),
-        # The "Normal" Role: General Business User
         Persona(
             name="Project Manager", 
             role_description="Asks for high-level summaries, key milestones, and 'who is responsible for what' without getting into technical weeds."
         ),
-        
-        # The "Finance" Role: Deep Data Auditor
         Persona(
             name="Equity Research Analyst", 
             role_description="Focuses on precise numeric trends, year-over-year (YoY) comparisons, specific fiscal risks, and footnotes in financial tables."
         )
     ]
 
-    # Setup directories securely
-    output_dir = r"D:\long_doc_agent\data\eval_dataset_store"
-    os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, "testset_output.csv")
+    # Setup directories securely using dynamic path
+    os.makedirs(EVAL_STORE_DIR, exist_ok=True)
+    output_file = os.path.join(EVAL_STORE_DIR, "testset_output.csv")
 
     # Generate Dataset
     dataset = await generate_ragas_dataset(my_kg, personas, llm, n_total=20)
@@ -201,7 +202,8 @@ async def run_generation(my_kg):
     return df
 
 async def generate_test_set():
-    kg_path = r"D:\long_doc_agent\data\chunks_store\user_upload_enriched_kg.json"
+    # Use dynamic path for loading the KG
+    kg_path = os.path.join(KG_STORE_DIR, "user_upload_enriched_kg.json")
     
     if not os.path.exists(kg_path):
         print(f"Error: Could not find the KG file at {kg_path}")

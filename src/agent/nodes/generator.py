@@ -1,5 +1,5 @@
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import AIMessage
 from src.agent.state import AgentState
@@ -14,19 +14,6 @@ gen_prompt = ChatPromptTemplate.from_messages([
     ("system", "You are a helpful assistant. Answer the question based on your general knowledge."),
     ("human", "{input}"),
 ])
-
-# gen_prompt_with_context = ChatPromptTemplate.from_messages([
-#     ("system", """You are a helpful Research Assistant. 
-#     Your goal is to answer the user's question using the provided Context.
-#     ### Input: {input}
-#     ### Context:{context}
-#     1. Read QUESTION and THEN extract information needed in CONTEXT.
-#     2. You may use your internal knowledge to explain or synthesize the technical terms found in the Context, but do not contradict the provided text.
-#     3. If the Context contains no relevant information at all to the topic, then and only then, state that you don't have enough information in your documents.
-#     4. Cite the Section or Source for every time providing specific technical details.
-#     """),
-#     MessagesPlaceholder(variable_name="history"),
-# ])
 
 gen_prompt_with_context = ChatPromptTemplate.from_messages([
     ("system", """
@@ -110,6 +97,7 @@ def generator_node(state: AgentState):
             context=context_str, 
             input=messages[-1].content
         )
+        print("Formatted Prompt for Generator with Context:\n")
         print(formatted_prompt) # If this shows "Context: " followed by nothing, that's your bug!
 
         answer_text = generator_with_retrieval_chain.invoke(inputs)

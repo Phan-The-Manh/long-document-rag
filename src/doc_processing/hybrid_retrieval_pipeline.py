@@ -4,9 +4,16 @@ from openai import OpenAI
 import chromadb
 from chromadb.utils import embedding_functions
 from flashrank import Ranker, RerankRequest
-
 from dotenv import load_dotenv
+
+# Load the .env file containing OPENAI_API_KEY
 load_dotenv()
+
+# --- Dynamic Path Logic ---
+# Sets the base directory to the folder where this script resides
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CHROMA_DB_PATH = os.path.join(BASE_DIR, "data", "chroma_store")
+RERANK_CACHE_DIR = os.path.join(BASE_DIR, "data", "rerank_cache")
 
 def rewrite_query_triad(raw_query: str):
     """
@@ -21,8 +28,8 @@ def rewrite_query_triad(raw_query: str):
     1. SEMANTIC: A formal, descriptive sentence for vector similarity search (ONLY using keywords in the question, just add filling word and rephrase).
     2. KEYWORD: A list of unique technical terms, part numbers, or error codes.
     3. METADATA: A JSON object containing:
-       - "section": A likely header name (e.g., 'Maintenance', 'Troubleshooting').
-       - "pages": A LIST of integers for every page number mentioned. Empty list if none.
+        - "section": A likely header name (e.g., 'Maintenance', 'Troubleshooting').
+        - "pages": A LIST of integers for every page number mentioned. Empty list if none.
     
     User Question: "{raw_query}"
     
@@ -54,7 +61,8 @@ def stage_1_hybrid_retriever(triad: dict, top_n: int = 15):
     Tier 2: Semantic + Metadata (Keyword dropped)
     Tier 3: Semantic Only (Pure Vector Fallback)
     """
-    db_path = "D:/long_doc_agent/data/chroma_store"
+    # Use the dynamic path
+    db_path = CHROMA_DB_PATH
     client = chromadb.PersistentClient(path=db_path)
     
     # 1. Setup Embedding Function
@@ -71,18 +79,15 @@ def stage_1_hybrid_retriever(triad: dict, top_n: int = 15):
     # 2. Prepare and Sanitize Inputs
     semantic_q = triad.get('semantic', "")
     
-    # Sanitize Keyword: Use only the first word to avoid phrase-match failure
     keyword_list = triad.get('keyword', "").replace(',', ' ').split()
     or_filters = [{"$contains": word} for word in keyword_list]
     
-    # 🛠️ THE FIX: Safely build the Document (Keyword) filter
     where_doc = None
     if len(or_filters) > 1:
         where_doc = {"$or": or_filters}
     elif len(or_filters) == 1:
-        where_doc = or_filters[0]  # Just pass the single dictionary directly
+        where_doc = or_filters[0]
 
-    # Sanitize Metadata
     section = triad['metadata'].get('section')
     if str(section).lower() in ["null", "none", ""]: section = None
     
@@ -107,30 +112,22 @@ def stage_1_hybrid_retriever(triad: dict, top_n: int = 15):
             query_texts=[semantic_q],
             n_results=top_n,
             where=where_meta if use_meta else None,
-            # 🛠️ THE FIX: Pass our safely constructed 'where_doc'
             where_document=where_doc if use_keyword else None, 
             include=["documents", "metadatas"]
         )
 
     # --- THE FALLBACK LOOP ---
-    
-    # ATTEMPT 1: The "Everything" Search
     print("DEBUG: Tier 1 - Full Hybrid (Semantic + Meta + Keyword)")
     results = execute_query(use_meta=True, use_keyword=True)
 
-    # ATTEMPT 2: The "Technical Content" Search (Semantic + Keyword)
-    # This ignores the Page/Section but keeps the strict keyword requirement.
     if not results["documents"] or not results["documents"][0]:
         print("DEBUG: Tier 2 - Technical Focus (Dropping Metadata, Keeping Keyword)")
         results = execute_query(use_meta=False, use_keyword=True)
 
-    # ATTEMPT 3: The "Location" Search (Semantic + Metadata)
-    # Keeps the page/section but allows for fuzzy semantic matching.
     if not results["documents"] or not results["documents"][0]:
         print("DEBUG: Tier 3 - Location Focus (Dropping Keyword, Keeping Metadata)")
         results = execute_query(use_meta=True, use_keyword=False)
 
-    # ATTEMPT 4: The "Emergency" Search (Semantic Only)
     if not results["documents"] or not results["documents"][0]:
         print("DEBUG: Tier 4 - Pure Semantic Fallback")
         results = execute_query(use_meta=False, use_keyword=False)
@@ -148,34 +145,21 @@ def stage_1_hybrid_retriever(triad: dict, top_n: int = 15):
     print(f"DEBUG: Successfully retrieved {len(candidates)} candidates.")
     return candidates
 
-# Initialize the Ranker globally so it only loads into memory once.
-# This uses a light but powerful model optimized for technical RAG.
-ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir="D:/long_doc_agent/data/rerank_cache")
+# Initialize the Ranker globally with a dynamic cache path.
+ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir=RERANK_CACHE_DIR)
 
 def stage_2_reranker(query: str, candidates: list, final_k: int = 5):
     """
     Refines the Stage 1 results by re-sorting them based on exact relevancy.
-    
-    Args:
-        query: The raw user question or the optimized semantic query.
-        candidates: The list of dicts returned by Stage 1.
-        final_k: How many top results to return to the LLM.
     """
     if not candidates:
         print("No candidates found in Stage 1 to rerank.")
         return []
 
-    # 1. Prepare the Rerank Request
-    # FlashRank expects a list of dicts with 'id', 'text', and 'meta'
     rerank_request = RerankRequest(query=query, passages=candidates)
-    
-    # 2. Execute Reranking
-    # This compares the query + text together for every candidate
     reranked_results = ranker.rerank(rerank_request)
 
-    # 3. Filter by a Confidence Threshold
-    # In 2026, we don't just take the top results; we check if they are actually good.
-    # Scores > 0.1 are generally relevant; scores > 0.5 are high confidence.
+    # Filter by a Confidence Threshold
     top_results = [res for res in reranked_results if res['score'] > 0.05]
 
     return top_results[:final_k]
@@ -188,10 +172,12 @@ def query_retrieval(user_input: str):
     candidates = stage_1_hybrid_retriever(triad)
     print(f"Retrieved {len(candidates)} candidates from Stage 1.")
     # 2. Rerank (Precision)
-    # We use the 'semantic' query from the triad for the best reranking match
     final_context = stage_2_reranker(triad['semantic'], candidates)
     print(f"Reranked to {len(final_context)} final candidates.")
     return final_context
 
-# result = query_retrieval("what is ocr?")
-# print("Final RAG Candidates:", result[0])
+# --- Usage ---
+if __name__ == "__main__":
+    result = query_retrieval("what is ocr?")
+    if result:
+        print("Final RAG Candidates:", result[0])

@@ -8,13 +8,11 @@ import pandas as pd
 from dotenv import load_dotenv
 
 # --- 1. LOGGING & WARNING CONFIGURATION ---
-# Silence the noisy httpx logs (INFO: 200 OK) and Ragas internal warnings
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("ragas").setLevel(logging.WARNING)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # --- 2. IMPORT CUSTOM CLIENTS & AGENT ---
-# Ensure your src.llm_clients.openai file exports 'async_client'
 from src.llm_clients.openai import async_client as openai_async_client
 from src.agent.graph import app  # Your LangGraph application
 from langchain_core.messages import HumanMessage
@@ -22,23 +20,26 @@ from langchain_core.messages import HumanMessage
 # --- 3. RAGAS CORE IMPORTS ---
 from ragas import evaluate, EvaluationDataset, SingleTurnSample
 from ragas.metrics import Faithfulness, AnswerRelevancy, AnswerCorrectness
-from ragas.llms import llm_factory
-from ragas.embeddings import OpenAIEmbeddings
-
-load_dotenv()
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings as LC_OpenAIEmbeddings
 
+load_dotenv()
+
+# --- DYNAMIC PATH SETUP ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Points relative to the script location
+INPUT_CSV_PATH = os.path.join(BASE_DIR, "data", "eval_dataset_store", "testset_output.csv")
+OUTPUT_CSV_PATH = os.path.join(BASE_DIR, "data", "eval_dataset_store", "agent_generation_results.csv")
+
 async def calculate_generation_metrics(eval_dataset: EvaluationDataset) -> pd.DataFrame:
     print("\n⚖️ Initializing Ragas Generation Graders...")
     
-    # 1. Use the LangChain objects which Ragas supports natively
-    # These automatically handle the async calls correctly when called in an async loop
+    # Use the LangChain objects which Ragas supports natively
     eval_llm = ChatOpenAI(model="gpt-4o-mini")
     eval_embeddings = LC_OpenAIEmbeddings(model="text-embedding-3-small")
 
-    # 2. Wrap them for Ragas
+    # Wrap them for Ragas
     evaluator_llm = LangchainLLMWrapper(eval_llm)
     evaluator_embeddings = LangchainEmbeddingsWrapper(eval_embeddings)
 
@@ -50,8 +51,6 @@ async def calculate_generation_metrics(eval_dataset: EvaluationDataset) -> pd.Da
 
     print("🚀 Starting Ragas Evaluation Loop (Async)...")
     
-    # Run the evaluation
-    # Ragas will internally manage the concurrency of these metrics
     results = evaluate(
         dataset=eval_dataset,
         metrics=metrics,
@@ -68,14 +67,17 @@ async def run_agent_generation_evaluation():
     """
     print("🤖 Starting LangGraph Agent Generation Evaluation...")
 
-    # Paths (Update these as needed)
-    input_csv = r"D:\long_doc_agent\data\eval_dataset_store\testset_output.csv"
-    output_csv = r"D:\long_doc_agent\data\eval_dataset_store\agent_generation_results.csv"
+    # Use the dynamic paths defined above
+    input_csv = INPUT_CSV_PATH
+    output_csv = OUTPUT_CSV_PATH
     
     if not os.path.exists(input_csv):
         print(f"❌ Error: Cannot find dataset at {input_csv}")
         return
         
+    # Ensure the output directory exists
+    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+
     df = pd.read_csv(input_csv)
     samples = []
     
@@ -86,7 +88,7 @@ async def run_agent_generation_evaluation():
         user_input = row['user_input']
         reference_answer = row['reference']
         
-        # Safely handle reference contexts (ground truth docs)
+        # Safely handle reference contexts
         raw_ref_ctx = row.get('reference_contexts', "[]")
         try:
             reference_contexts = ast.literal_eval(raw_ref_ctx) if isinstance(raw_ref_ctx, str) else raw_ref_ctx
@@ -96,19 +98,19 @@ async def run_agent_generation_evaluation():
         print(f"[{index + 1}/{len(df)}] Agent Thinking: {user_input[:50]}...")
         
         try:
-            # Use a fresh Thread ID to prevent conversation leakage between tests
+            # Use a fresh Thread ID to prevent conversation leakage
             config = {"configurable": {"thread_id": f"eval_task_{uuid.uuid4()}"}}
             
-            # Invoke your actual LangGraph Agent
+            # Invoke LangGraph Agent
             final_state = app.invoke(
                 {"messages": [HumanMessage(content=user_input)]}, 
                 config=config
             )
             
-            # Extract content from the last AI Message
+            # Extract content from last AI Message
             response_text = final_state["messages"][-1].content
             
-            # Extract docs (Ensure your Graph State populates 'retrieved_docs')
+            # Extract docs
             retrieved_docs = final_state.get("retrieved_docs", []) 
             retrieved_contexts = [
                 doc.page_content if hasattr(doc, 'page_content') else str(doc) 
@@ -154,5 +156,4 @@ async def run_agent_generation_evaluation():
     print(f"📄 Detailed report saved to: {output_csv}")
 
 if __name__ == "__main__":
-    # Run the async orchestrator
     asyncio.run(run_agent_generation_evaluation())

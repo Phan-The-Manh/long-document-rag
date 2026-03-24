@@ -14,16 +14,22 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings as LC_OpenAIEmbeddings
 # Load environment variables (API Keys)
 load_dotenv()
 
+# --- DYNAMIC PATH SETUP ---
+# Gets the directory where this script is saved
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Builds the path to the CSV results file
+RESULTS_FILE_PATH = os.path.join(BASE_DIR, "data", "eval_dataset_store", "agent_generation_results.csv")
+
 async def run_grading_only():
-    # 1. Load the CSV
-    file_path = r"D:\long_doc_agent\data\eval_dataset_store\agent_generation_results.csv"
+    # 1. Load the CSV using the dynamic path
+    file_path = RESULTS_FILE_PATH
     
     if not os.path.exists(file_path):
         print(f"❌ Error: File not found at {file_path}")
         return
 
     df = pd.read_csv(file_path)
-    print(f"📂 Loaded {len(df)} samples. Starting Grading Phase...")
+    print(f"📂 Loaded {len(df)} samples from {file_path}. Starting Grading Phase...")
 
     # 2. Convert DataFrame rows back into Ragas Samples
     samples = []
@@ -44,7 +50,6 @@ async def run_grading_only():
     eval_dataset = EvaluationDataset(samples=samples)
 
     # 3. Setup Grader Models with Langchain Wrappers
-    # This ensures Ragas uses the correct async paths internally
     evaluator_llm = LangchainLLMWrapper(ChatOpenAI(model="gpt-4o-mini"))
     evaluator_embeddings = LangchainEmbeddingsWrapper(LC_OpenAIEmbeddings(model="text-embedding-3-small"))
 
@@ -73,7 +78,7 @@ async def run_grading_only():
         print(f"{metric_name:20}: {score:.4f} / 1.0000")
     
     print("="*50)
-    print(f"📄 Detailed results saved to: {file_path}")
+    print(f"📄 Detailed results saved back to: {file_path}")
 
 if __name__ == "__main__":
     asyncio.run(run_grading_only())

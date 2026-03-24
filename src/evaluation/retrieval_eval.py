@@ -23,7 +23,12 @@ from src.doc_processing.hybrid_retrieval_pipeline import query_retrieval
 
 load_dotenv()
 
-
+# --- DYNAMIC PATH SETUP ---
+# Gets the directory where this script is saved
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Builds paths relative to the script location
+INPUT_CSV = os.path.join(BASE_DIR, "data", "eval_dataset_store", "testset_output.csv")
+OUTPUT_CSV = os.path.join(BASE_DIR, "data", "eval_dataset_store", "retrieval_evaluation_results.csv")
 
 async def calculate_retrieval_metrics(eval_dataset: EvaluationDataset) -> pd.DataFrame:
     print("\nInitializing Ragas Grader Models...")
@@ -59,14 +64,17 @@ async def run_retrieval_and_evaluate():
     """
     print("Starting End-to-End Retrieval Pipeline Execution...")
 
-    # 1. Load the Golden Dataset
-    input_csv = r"D:\long_doc_agent\data\eval_dataset_store\testset_output.csv"
-    output_csv = r"D:\long_doc_agent\data\eval_dataset_store\retrieval_evaluation_results.csv"
+    # 1. Load the Golden Dataset using dynamic paths
+    input_csv = INPUT_CSV
+    output_csv = OUTPUT_CSV
     
     if not os.path.exists(input_csv):
         print(f"Error: Cannot find dataset at {input_csv}")
         return
         
+    # Ensure output directory exists
+    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
+
     df = pd.read_csv(input_csv)
     samples = []
     
@@ -123,4 +131,5 @@ async def run_retrieval_and_evaluate():
 
 
 if __name__ == "__main__":
+    # Run the async orchestrator
     asyncio.run(run_retrieval_and_evaluate())

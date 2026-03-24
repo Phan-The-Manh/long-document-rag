@@ -8,21 +8,25 @@ from dotenv import load_dotenv
 # Load the .env file containing OPENAI_API_KEY
 load_dotenv()
 
+# --- Dynamic Path Logic ---
+# Sets the base directory to the folder where this script resides
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CHROMA_DB_PATH = os.path.join(BASE_DIR, "data", "chroma_store")
+
 def save_chunks_to_chroma(ingestion_package: dict):
-    db_path = "D:/long_doc_agent/data/chroma_store"
+    # Use the dynamic path
+    db_path = CHROMA_DB_PATH
 
     # 1. PHYSICAL WIPE
-    # Instead of just client.reset(), we delete the actual folder
     if os.path.exists(db_path):
-        print(f"🗑️ Physically deleting all files in {db_path}...")
-        # Use shutil.rmtree to delete the folder and all subfolders (UUID folders)
+        print(f"Physically deleting all files in {db_path}...")
+        # Use shutil.rmtree to delete the folder and all subfolders
         shutil.rmtree(db_path)
     
     # Re-create the empty directory
-    os.makedirs(db_path)
+    os.makedirs(db_path, exist_ok=True)
 
     # 2. Setup Client
-    # Since the folder is gone, this starts a brand-new database
     client = chromadb.PersistentClient(path=db_path)
 
     # 3. Setup Embedding Function
@@ -39,7 +43,7 @@ def save_chunks_to_chroma(ingestion_package: dict):
     )
 
     # 5. Add the Data
-    print(f"📥 Saving {len(ingestion_package['documents'])} chunks to fresh store...")
+    print(f"Saving {len(ingestion_package['documents'])} chunks to fresh store...")
     collection.add(
         documents=ingestion_package["documents"],
         metadatas=ingestion_package["metadatas"],
@@ -56,8 +60,11 @@ def process_and_save_full_pipeline(source_path: str, source_name: str):
     print(f"--- Phase 1: Processing {source_name} ---")
     ingestion_package = prepare_source_for_chroma(source_path, source_name)
 
+    if not ingestion_package or "documents" not in ingestion_package:
+        print("Error: Ingestion package is empty or invalid.")
+        return
+
     print(f"--- Phase 2: Storing in ChromaDB (Fresh Start) ---")
-    # We no longer pass source_name here because we use a fixed session name
     collection = save_chunks_to_chroma(ingestion_package)
 
     print(f"--- Pipeline Complete: {source_name} is ready for retrieval ---")
