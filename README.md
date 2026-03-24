@@ -54,26 +54,6 @@ The system is orchestrated using **LangGraph** to manage state and complex decis
 * **Stateful Iteration:** Using a directed graph, the agent can maintain the state of the search and "loop back" to refine its query if the initial retrieval is insufficient.
 * **Self-Correction:** The agent evaluates the retrieved evidence against the user's question before generating a response, significantly reducing the risk of hallucination in dense, 100-page contexts.
 
-### Evaluation & Testing
-The pipeline is evaluated using the **RAGAS** framework and a **Knowledge Graph** synthetic benchmarking approach to ensure accuracy.
-
-* **Retriever Performance**
-    * **Context Precision:** Measures the signal-to-noise ratio in retrieved chunks; ensures top results are relevant.
-    * **Context Recall:** Verifies that all information required to answer the query was successfully found.
-
-* **Generation Quality**
-    * **Faithfulness:** Quantifies "Hallucination" by checking if the answer is derived *only* from retrieved context.
-    * **Answer Relevance:** Measures how directly the response addresses the user's specific query.
-    * **Answer Correctness:** Compares the final output against a ground-truth **Golden Dataset**.
-    * *Note: Generation evaluation requires high-tier reasoning models and is currently in partial testing.*
-
-* **Knowledge Graph & Synthetic Benchmarking**
-    * **Entity Mapping:** Extracts relationships (e.g., `NVIDIA` → `PRODUCT` → `H100 GPU`) to map document logic.
-    * **Golden Dataset Generation:**
-        * **Single-Hop:** Simple data lookups (e.g., "What was the FY25 revenue?").
-        * **Multi-Hop:** Reasoning across multiple tables (e.g., "Compare R&D spend to Data Center growth").
-    * **Benchmarking:** Used as the ground truth to verify the Retriever and Generation.
-
 ---
 
 ## 3. System Architecture
@@ -178,6 +158,8 @@ python main.py
 ```
 image
 
+Time for document processing would be about 1 minute for 10 pages(depend on how complex it is)
+
 ### 5.5 Run Evaluation
 -Build Knowledge Graph from chunks
 ```bash
@@ -203,7 +185,61 @@ python -m src.evaluation.generation_eval
 ```
 image
 
-6. Evaluation & Testing
+> **Note:** This process is computationally intensive and time-consuming.
+
+---
+
+## 6. Evaluation & Testing
+
+The pipeline is validated using the **Ragas** framework and a **Knowledge Graph (KG)** synthetic benchmarking approach to measure retrieval accuracy and generation quality.
+
+---
+
+### 6.1 Synthetic Dataset Generation
+To avoid manual labeling bias, we utilized a **Knowledge Graph** to map document logic (e.g., `NVIDIA` → `PRODUCT` → `H100`). 
+* **Golden Dataset:** 20 high-fidelity records including queries, context, and ground-truth references.
+* **Query Types:** Includes **Single-Hop** (direct facts) and **Multi-Hop** (reasoning across multiple nodes).
+* **Personas:** Queries are tailored to specific user roles to simulate real-world utility.
+
+### 6.2 Key Metrics
+Performance is tracked across the **RAG Triad** to isolate failures in the Retriever vs. the Generator.
+
+| Component | Metric | Definition |
+| :--- | :--- | :--- |
+| **Retriever** | **Context Precision** | Signal-to-noise ratio; ensures top results are relevant. |
+| | **Context Recall** | Verifies if all required info was successfully found. |
+| **Generator** | **Faithfulness** | Detects hallucinations; answer must stay within context. |
+| | **Answer Relevance** | How directly the response addresses the user query. |
+| | **Answer Correctness** | Comparison against the KG-generated Golden Dataset. |
+
+> **Note:** Generation metrics require high-tier reasoning models and are currently undergoing partial testing across the 20-record sample.
+
+### 6.3 Evaluation Results
+
+The system was benchmarked against two datasets to test scalability, processing speed, and accuracy.
+
+| Benchmark | Scope | Content Type | Processing Time | Performance |
+| :--- | :--- | :--- | :--- | :--- |
+| **Baseline** | 20 Pages | Technical Paper | ~2 Minutes | **High Accuracy** |
+| **Stress Test** | 130 Pages | NVIDIA FY25 Q4 | ~13 Minutes | **Performance Drop** |
+
+![Insert Baseline Results Image]
+*Figure 1: High-precision metrics for technical documentation.*
+
+![Insert Financial Results Image]
+*Figure 2: Performance degradation in high-volume financial data.*
+
+---
+
+### 6.4 Key Takeaways
+
+The transition from a 20-page technical paper to a 130-page financial report revealed three core challenges:
+
+* **Processing Latency:** Document processing scales linearly at approximately **1 minute per 10 pages**. While acceptable for small sets, large financial filings (100+ pages) require asynchronous processing to maintain user experience.
+* **Context Dilution:** Increased page volume introduced "noise," where the retriever struggled to distinguish between similar financial figures (e.g., Q3 vs. Q4) across the 130-page document.
+* **Data Density:** The high frequency of nested tables in the financial report reduced **Context Recall** compared to the structured prose of the baseline academic paper.
+
+**Conclusion:** Scaling to 100+ pages requires more granular chunking and enhanced metadata filtering to prevent retrieval errors in dense datasets.
 
 7. Assumptions & Limitations
    
