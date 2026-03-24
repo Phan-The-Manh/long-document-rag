@@ -279,7 +279,7 @@ Context Recall: 0.7208 / 1.0000
 The transition from a 20-page technical paper to a 130-page financial report revealed three core challenges:
 
 * **Processing Latency:** Document processing scales linearly at approximately **1 minute per 10 pages**. While acceptable for small sets, large financial filings (100+ pages) require asynchronous processing to maintain user experience.
-* **Context Dilution:** Increased page volume introduced "noise," where the retriever struggled to capture relationship between chunks.
+* **Context Dilution:** Increased page volume introduced "noise," where the retriever struggled to capture relationship between chunks. Increasing in number of personas also contribute to lower performance of chatbot.
 
 **Conclusion:** Scaling to 100+ pages requires more granular chunking and enhanced metadata filtering to prevent retrieval errors in dense datasets.
 
