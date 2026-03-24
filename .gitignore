@@ -19,9 +19,13 @@ build/
 
 # --- Vector Databases & Local Data ---
 # This ignores your specific data folders but keeps the root clean
-data_store/
-chromadb_store/
-faiss_store/
+# Ignore the entire data directory and all subfolders
+data/
+
+# Specific ignores if you move things around
+*.pdf
+*.sqlite3
+chroma_store/
 rerank_cache/
 *.sqlite3
 *.log

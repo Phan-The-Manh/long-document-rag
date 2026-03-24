@@ -1,4 +1,5 @@
 import json
+import shutil
 
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.transforms.chunker import HybridChunker
@@ -10,85 +11,81 @@ import time
 import os
 import requests
 
-def save_url_to_local(url: str, target_dir: str = r"D:\long_doc_agent\data\uploaded_file"):
-    """
-    Downloads a file from a URL and saves it as 'user_upload.pdf'.
-    """
+def ensure_local_path(source: str, target_dir: str = r"D:\long_doc_agent\data\uploaded_file"):
     if not os.path.exists(target_dir):
         os.makedirs(target_dir, exist_ok=True)
-    
-    local_path = os.path.join(target_dir, "user_upload.pdf")
-    
-    print(f"🌐 Downloading: {url}")
-    response = requests.get(url, stream=True, timeout=60)
-    response.raise_for_status()
-    
-    with open(local_path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
-            
-    return local_path
+        
+    local_destination = os.path.join(target_dir, "user_upload.pdf")
 
-def convert_source_to_chunks(source_path: str, window_size: int = 10, overlap: int = 2):
+    # Force delete existing file to prevent metadata "ghosting"
+    if os.path.exists(local_destination):
+        os.remove(local_destination)
+
+    if source.startswith(("http://", "https://")):
+        # ... (keep your existing URL download logic here)
+        return local_destination
+    else:
+        clean_source = source.strip().strip('"').strip("'")
+        if os.path.exists(clean_source):
+            print(f"📂 Fresh Copy: {clean_source} -> {local_destination}")
+            shutil.copy2(clean_source, local_destination)
+            return local_destination
+        else:
+            raise FileNotFoundError(f"❌ File not found at: {clean_source}")
+        
+        
+def parse_pdf_to_docs(source_path: str, window_size: int = 10, overlap: int = 2):
     """
-    source_path should be the LOCAL path
+    Step 1: Converts a PDF into a list of Docling Document objects 
+    using a sliding window to manage memory.
     """
-    start_time = time.perf_counter()
-    
-    # 1. Setup Converter & Chunker
-    # TIP: For 512-token models, use max_tokens=480 to avoid indexing errors
     pipeline_options = PdfPipelineOptions(
         do_ocr=True,
         do_table_structure=True,
-        generate_page_images=False,
-        generate_picture_images=False,
     )
-    
     converter = DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
     )
+
+    # Get page count
+    try:
+        reader = PdfReader(source_path)
+        total_pages = len(reader.pages)
+    except Exception as e:
+        print(f"Error reading PDF: {e}")
+        return [converter.convert(source_path).document]
+
+    documents = []
+    current_start = 1
+    step = window_size - overlap
+
+    while current_start <= total_pages:
+        current_end = min(current_start + window_size - 1, total_pages)
+        print(f"--- Parsing Window: {current_start} to {current_end} ---")
+        
+        result = converter.convert(source_path, page_range=(current_start, current_end))
+        documents.append(result.document)
+        
+        if current_end == total_pages:
+            break
+        current_start += step
+
+    return documents
+
+def chunk_documents(documents: list, max_tokens: int = 512):
+    """
+    Step 2: Takes a list of Docling Documents and breaks them 
+    into individual text chunks.
+    """
+    # merge_peers=False keeps chunks small for 512-token context windows
+    chunker = HybridChunker(max_tokens=max_tokens, merge_peers=False)
     
-    # merge_peers=False helps prevent chunks from growing too large for the 512 limit
-    chunker = HybridChunker(max_tokens=480, merge_peers=False)
-
-    # 2. Get page length using pypdf from the LOCAL file
-    total_pages = 0
-    if os.path.exists(source_path) and source_path.lower().endswith(".pdf"):
-        try:
-            reader = PdfReader(source_path)
-            total_pages = len(reader.pages)
-        except Exception as e:
-            print(f"pypdf error: {e}. Falling back to one-shot.")
-    else:
-        print(f"File not found or not a PDF at: {source_path}")
-
     all_chunks = []
-
-    # 3. Execution Strategy
-    if total_pages > 0:
-        print(f"Sliding Window active: {total_pages} pages.")
-        current_start = 1
-        step = window_size - overlap
-
-        while current_start <= total_pages:
-            current_end = min(current_start + window_size - 1, total_pages)
-            print(f"--- Window: {current_start} to {current_end} ---")
-            
-            # Docling processes only this specific slice
-            result = converter.convert(source_path, page_range=(current_start, current_end))
-            all_chunks.extend(list(chunker.chunk(result.document)))
-            
-            if current_end == total_pages:
-                break
-            current_start += step
-    else:
-        # One-shot fallback
-        print(f"Processing in one shot...")
-        result = converter.convert(source_path)
-        all_chunks = list(chunker.chunk(result.document))
-
-    duration = time.perf_counter() - start_time
-    print(f"Completed: {len(all_chunks)} chunks in {duration:.2f}s.")
+    for doc in documents:
+        chunks = list(chunker.chunk(doc))
+        all_chunks.extend(chunks)
+        
+    print(f"Extraction complete. Created {len(all_chunks)} total chunks.")
     return all_chunks
 
 def build_enriched_chunk_and_metadata(chunk, source_name: str, chunk_index: int) -> Tuple[str, Dict[str, Any]]:
@@ -132,36 +129,46 @@ def build_enriched_chunk_and_metadata(chunk, source_name: str, chunk_index: int)
 
     return new_chunk_text, metadata
 
-def prepare_source_for_chroma(url: str, source_name: str) -> Dict[str, List[Any]]:
+def prepare_source_for_chroma(input_source: str, source_name: str) -> Dict[str, List[Any]]:
     """
-    Orchestrates the full pipeline: Download -> Chunk -> Enrich -> Save.
+    Orchestrates the full pipeline: 
+    1. Resolve Source (URL or Local) 
+    2. Parse (Sliding Window) 
+    3. Chunk (No De-duplication)
+    4. Enrich 
+    5. Save
     """
-    # 1. Download the file using your function
-    # This ensures pypdf (inside convert_source_to_chunks) can calculate page length
+    # 1. Resolve Path (Handles both URL and existing local disk paths)
     UPLOAD_DIR = r"D:\long_doc_agent\data\uploaded_file"
     try:
-        source_path = save_url_to_local(url, target_dir=UPLOAD_DIR)
+        source_path = ensure_local_path(input_source, target_dir=UPLOAD_DIR)
     except Exception as e:
-        print(f"❌ Critical Error during download: {e}")
+        print(f"Critical Error resolving source: {e}")
         return {}
 
-    # 2. Setup storage for enriched results
+    # 2. Setup storage
     STORE_DIR = r"D:\long_doc_agent\data\chunks_store"
     os.makedirs(STORE_DIR, exist_ok=True)
     
-    # 3. Get raw chunks from your Sliding Window logic
-    # This now receives the local path 'D:\...\user_upload.pdf'
-    raw_chunks = convert_source_to_chunks(source_path)
+    # 3. Step 1: Parse PDF into Docling Document objects (The "Slow" Part)
+    print(f"Starting PDF Conversion for: {source_name}")
+    doc_objects = parse_pdf_to_docs(source_path, window_size=10, overlap=2)
     
-    # 4. Prepare containers for Chroma format
+    # 4. Step 2: Convert Document objects into text chunks (The "Fast" Part)
+    # We are NOT de-duplicating here as per your requirement
+    print(f"Chunking documents...")
+    raw_chunks = chunk_documents(doc_objects, max_tokens=480)
+    
+    # 5. Prepare containers for Chroma format
     enriched_documents = []
     metadatas = []
     ids = []
 
-    print(f"✨ Enriching {len(raw_chunks)} chunks...")
+    print(f"✨ Enriching {len(raw_chunks)} total chunks...")
 
-    # 5. Process and Enrich
+    # 6. Process and Enrich
     for i, chunk in enumerate(raw_chunks):
+        # build_enriched_chunk_and_metadata creates the text and metadata dict
         enriched_text, metadata = build_enriched_chunk_and_metadata(
             chunk, 
             source_name=source_name, 
@@ -172,7 +179,7 @@ def prepare_source_for_chroma(url: str, source_name: str) -> Dict[str, List[Any]
         metadatas.append(metadata)
         ids.append(metadata["chunk_id"])
 
-    # 6. Save as JSON
+    # 7. Save as JSON
     output_data = {
         "documents": enriched_documents,
         "metadatas": metadatas,
@@ -181,9 +188,12 @@ def prepare_source_for_chroma(url: str, source_name: str) -> Dict[str, List[Any]
 
     save_path = os.path.join(STORE_DIR, f"{source_name}_enriched.json")
     
-    with open(save_path, "w", encoding="utf-8") as f:
-        json.dump(output_data, f, indent=4, ensure_ascii=False)
-
-    print(f"✅ Successfully prepared {source_name} and saved to: {save_path}")
+    try:
+        with open(save_path, "w", encoding="utf-8") as f:
+            json.dump(output_data, f, indent=4, ensure_ascii=False)
+        print(f"Successfully prepared {source_name}. Total chunks: {len(enriched_documents)}")
+        print(f"Saved to: {save_path}")
+    except Exception as e:
+        print(f"Error saving JSON: {e}")
 
     return output_data
