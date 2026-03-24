@@ -138,7 +138,7 @@ python -m venv venv
 # Activate the environment (Mac/Linux)
 source venv/bin/activate
 ```
-**Setting openai api key**
+**Setting openai api key:** create .env file and set api key.
 ```bash
 OPENAI_API_KEY = ...
 ```
