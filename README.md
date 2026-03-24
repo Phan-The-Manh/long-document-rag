@@ -287,6 +287,7 @@ The transition from a 20-page technical paper to a 130-page financial report rev
 ### 1. Data & Parsing Limitations
 * **Simple Parsing:** **Ignores figures and diagrams**, focusing strictly on text and table structures.
 * **No Hierarchical Summary:** Lack of page-level or section-level summarization reduces the ability to find information based on high-level themes.
+* **Overlaped pages:** create duplicate chunks, but important to retain structural context.
 
 ### 2. Retrieval & Reasoning Limitations
 * **Linear Agent Logic:** **No multi-hop reasoning**; the agent cannot synthesize facts found in widely separated parts of the document (e.g., connecting Page 2 to Page 50).
