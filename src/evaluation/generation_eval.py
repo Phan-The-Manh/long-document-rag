@@ -27,10 +27,10 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings as LC_OpenAIEmbeddings
 load_dotenv()
 
 # --- DYNAMIC PATH SETUP ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Points relative to the script location
-INPUT_CSV_PATH = os.path.join(BASE_DIR, "data", "eval_dataset_store", "testset_output.csv")
-OUTPUT_CSV_PATH = os.path.join(BASE_DIR, "data", "eval_dataset_store", "agent_generation_results.csv")
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+INPUT_CSV_PATH = os.path.join(PROJECT_ROOT, "data", "eval_dataset_store", "testset_output.csv")
+OUTPUT_CSV_PATH = os.path.join(PROJECT_ROOT, "data", "eval_dataset_store", "agent_generation_results.csv")
 
 async def calculate_generation_metrics(eval_dataset: EvaluationDataset) -> pd.DataFrame:
     print("\n⚖️ Initializing Ragas Generation Graders...")

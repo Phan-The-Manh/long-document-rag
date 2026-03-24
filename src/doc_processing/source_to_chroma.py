@@ -9,9 +9,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- Dynamic Path Logic ---
-# Sets the base directory to the folder where this script resides
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CHROMA_DB_PATH = os.path.join(BASE_DIR, "data", "chroma_store")
+CURRENT_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_SCRIPT_DIR, "..", ".."))
+UPLOAD_DIR = os.path.join(PROJECT_ROOT, "data", "uploaded_file")
+STORE_DIR = os.path.join(PROJECT_ROOT, "data", "chunks_store")
+CHROMA_DB_PATH = os.path.join(PROJECT_ROOT, "data", "chroma_store")
 
 def save_chunks_to_chroma(ingestion_package: dict):
     # Use the dynamic path

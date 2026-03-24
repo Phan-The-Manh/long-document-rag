@@ -22,10 +22,13 @@ from ragas.testset.synthesizers.single_hop import SingleHopQuerySynthesizer, Sin
 load_dotenv()
 
 # --- DYNAMIC PATH SETUP ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Points to your data directories relative to the script location
-KG_STORE_DIR = os.path.join(BASE_DIR, "data", "chunks_store")
-EVAL_STORE_DIR = os.path.join(BASE_DIR, "data", "eval_dataset_store")
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+KG_STORE_DIR = os.path.join(PROJECT_ROOT, "data", "chunks_store")
+EVAL_STORE_DIR = os.path.join(PROJECT_ROOT, "data", "eval_dataset_store")
+
+# Verification (Optional)
+# print(f"Targeting global data folder at: {PROJECT_ROOT}/data")
 
 # ==========================================
 # 1. CUSTOM SYNTHESIZERS

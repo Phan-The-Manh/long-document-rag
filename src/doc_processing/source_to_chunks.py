@@ -1,24 +1,37 @@
 import json
 import shutil
-from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling_core.transforms.chunker import HybridChunker
-from typing import Dict, Any, Tuple, List
-from docling.datamodel.pipeline_options import PdfPipelineOptions
-from docling.datamodel.base_models import InputFormat
-from pypdf import PdfReader
 import time
 import os
 import requests
+from typing import Dict, Any, Tuple, List
 
-# --- Dynamic Path Logic ---
-# Sets the base directory to the folder where this script resides
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "data", "uploaded_file")
-STORE_DIR = os.path.join(BASE_DIR, "data", "chunks_store")
+# Docling & PDF imports
+from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling_core.transforms.chunker import HybridChunker
+from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.datamodel.base_models import InputFormat
+from pypdf import PdfReader
+
+# --- DYNAMIC PATH SETUP ---
+# Gets the directory where this script is saved
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Navigates up two levels to reach the project root
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+
+# Define folder paths
+UPLOAD_DIR = os.path.join(PROJECT_ROOT, "data", "uploaded_file")
+STORE_DIR = os.path.join(PROJECT_ROOT, "data", "chunks_store")
+
+def ensure_directories():
+    """Ensures all required project folders exist."""
+    for folder in [UPLOAD_DIR, STORE_DIR]:
+        if not os.path.exists(folder):
+            print(f"📁 Creating missing directory: {folder}")
+            os.makedirs(folder, exist_ok=True)
 
 def ensure_local_path(source: str, target_dir: str = UPLOAD_DIR):
-    if not os.path.exists(target_dir):
-        os.makedirs(target_dir, exist_ok=True)
+    # CRITICAL FIX: Ensure target directory exists before file operations
+    os.makedirs(target_dir, exist_ok=True)
         
     local_destination = os.path.join(target_dir, "user_upload.pdf")
 
@@ -27,7 +40,11 @@ def ensure_local_path(source: str, target_dir: str = UPLOAD_DIR):
         os.remove(local_destination)
 
     if source.startswith(("http://", "https://")):
-        # ... (keep your existing URL download logic here)
+        print(f"🌐 Downloading from URL: {source}")
+        response = requests.get(source, timeout=30)
+        response.raise_for_status()
+        with open(local_destination, "wb") as f:
+            f.write(response.content)
         return local_destination
     else:
         clean_source = source.strip().strip('"').strip("'")
@@ -39,10 +56,6 @@ def ensure_local_path(source: str, target_dir: str = UPLOAD_DIR):
             raise FileNotFoundError(f"❌ File not found at: {clean_source}")
         
 def parse_pdf_to_docs(source_path: str, window_size: int = 10, overlap: int = 2):
-    """
-    Step 1: Converts a PDF into a list of Docling Document objects 
-    using a sliding window to manage memory.
-    """
     pipeline_options = PdfPipelineOptions(
         do_ocr=True,
         do_table_structure=True,
@@ -51,12 +64,11 @@ def parse_pdf_to_docs(source_path: str, window_size: int = 10, overlap: int = 2)
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
     )
 
-    # Get page count
     try:
         reader = PdfReader(source_path)
         total_pages = len(reader.pages)
     except Exception as e:
-        print(f"Error reading PDF: {e}")
+        print(f"⚠️ Error reading PDF metadata: {e}. Falling back to standard conversion.")
         return [converter.convert(source_path).document]
 
     documents = []
@@ -77,27 +89,17 @@ def parse_pdf_to_docs(source_path: str, window_size: int = 10, overlap: int = 2)
     return documents
 
 def chunk_documents(documents: list, max_tokens: int = 512):
-    """
-    Step 2: Takes a list of Docling Documents and breaks them 
-    into individual text chunks.
-    """
-    # merge_peers=False keeps chunks small for 512-token context windows
     chunker = HybridChunker(max_tokens=max_tokens, merge_peers=False)
-    
     all_chunks = []
     for doc in documents:
         chunks = list(chunker.chunk(doc))
         all_chunks.extend(chunks)
         
-    print(f"Extraction complete. Created {len(all_chunks)} total chunks.")
+    print(f"✅ Extraction complete. Created {len(all_chunks)} total chunks.")
     return all_chunks
 
 def build_enriched_chunk_and_metadata(chunk, source_name: str, chunk_index: int) -> Tuple[str, Dict[str, Any]]:
-    """
-    Prepends context to the chunk text and extracts retrieval metadata.
-    Returns: (new_chunk_text, metadata_dict)
-    """
-    # 1. Extract and format Page Numbers
+    # 1. Extract Page Numbers
     pages_list = sorted({
         prov.page_no
         for item in getattr(chunk.meta, "doc_items", [])
@@ -107,70 +109,64 @@ def build_enriched_chunk_and_metadata(chunk, source_name: str, chunk_index: int)
     pages_str = ", ".join(map(str, pages_list)) if pages_list else "Unknown"
     first_page = pages_list[0] if pages_list else 0
 
-    # 2. Handle Heading Hierarchy (Breadcrumbs)
+    # 2. Heading Hierarchy
     headings_list = getattr(chunk.meta, "headings", [])
     breadcrumb = " > ".join(headings_list) if headings_list else "General"
 
-    # 3. Create the New Chunk Text (Prepend Logic)
+    # 3. Prepend Context
     new_chunk_text = (
         f"SECTION: {breadcrumb}\n"
         f"PAGES: {pages_str}\n"
         f"CONTENT: {chunk.text}"
     )
 
-    # 4. Final Metadata for Chroma
+    # 4. Final Metadata
     metadata = {
         "source": source_name,
         "chunk_id": f"{source_name}_chunk_{chunk_index}",
-        "first_page": first_page,      # Useful for 'Sort by Page'
-        "pages_label": pages_str,     # Useful for 'Display in UI'
-        "section_path": breadcrumb,    # Useful for 'Filter by Section'
+        "first_page": first_page,
+        "pages_label": pages_str,
+        "section_path": breadcrumb,
     }
 
     return new_chunk_text, metadata
 
 def prepare_source_for_chroma(input_source: str, source_name: str) -> Dict[str, List[Any]]:
-    """
-    Orchestrates the full pipeline.
-    """
+    # 0. Safety Check: Ensure folders exist
+    ensure_directories()
+
     # 1. Resolve Path
     try:
         source_path = ensure_local_path(input_source, target_dir=UPLOAD_DIR)
     except Exception as e:
-        print(f"Critical Error resolving source: {e}")
+        print(f"❌ Critical Error resolving source: {e}")
         return {}
 
-    # 2. Setup storage
-    os.makedirs(STORE_DIR, exist_ok=True)
-    
-    # 3. Step 1: Parse PDF
-    print(f"Starting PDF Conversion for: {source_name}")
+    # 2. Parse PDF
+    print(f"🚀 Starting PDF Conversion: {source_name}")
     doc_objects = parse_pdf_to_docs(source_path, window_size=10, overlap=2)
     
-    # 4. Step 2: Chunk
-    print(f"Chunking documents...")
+    # 3. Chunk
     raw_chunks = chunk_documents(doc_objects, max_tokens=480)
     
-    # 5. Prepare containers
     enriched_documents = []
     metadatas = []
     ids = []
 
-    print(f"✨ Enriching {len(raw_chunks)} total chunks...")
+    print(f"✨ Enriching {len(raw_chunks)} chunks...")
 
-    # 6. Process and Enrich
+    # 4. Enrich
     for i, chunk in enumerate(raw_chunks):
         enriched_text, metadata = build_enriched_chunk_and_metadata(
             chunk, 
             source_name=source_name, 
             chunk_index=i
         )
-        
         enriched_documents.append(enriched_text)
         metadatas.append(metadata)
         ids.append(metadata["chunk_id"])
 
-    # 7. Save as JSON
+    # 5. Save Results
     output_data = {
         "documents": enriched_documents,
         "metadatas": metadatas,
@@ -182,9 +178,9 @@ def prepare_source_for_chroma(input_source: str, source_name: str) -> Dict[str, 
     try:
         with open(save_path, "w", encoding="utf-8") as f:
             json.dump(output_data, f, indent=4, ensure_ascii=False)
-        print(f"Successfully prepared {source_name}. Total chunks: {len(enriched_documents)}")
-        print(f"Saved to: {save_path}")
+        print(f"🎉 Success! Total chunks: {len(enriched_documents)}")
+        print(f"📂 Saved to: {save_path}")
     except Exception as e:
-        print(f"Error saving JSON: {e}")
+        print(f"❌ Error saving JSON: {e}")
 
     return output_data

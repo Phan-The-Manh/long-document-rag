@@ -25,10 +25,14 @@ load_dotenv()
 
 # --- DYNAMIC PATH SETUP ---
 # Gets the directory where this script is saved
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Builds paths relative to the script location
-INPUT_CSV = os.path.join(BASE_DIR, "data", "eval_dataset_store", "testset_output.csv")
-OUTPUT_CSV = os.path.join(BASE_DIR, "data", "eval_dataset_store", "retrieval_evaluation_results.csv")
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Navigates up two levels to reach the project root
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+
+# Builds paths relative to the project root
+INPUT_CSV = os.path.join(PROJECT_ROOT, "data", "eval_dataset_store", "testset_output.csv")
+OUTPUT_CSV = os.path.join(PROJECT_ROOT, "data", "eval_dataset_store", "retrieval_evaluation_results.csv")
 
 async def calculate_retrieval_metrics(eval_dataset: EvaluationDataset) -> pd.DataFrame:
     print("\nInitializing Ragas Grader Models...")

@@ -10,10 +10,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- Dynamic Path Logic ---
-# Sets the base directory to the folder where this script resides
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CHROMA_DB_PATH = os.path.join(BASE_DIR, "data", "chroma_store")
-RERANK_CACHE_DIR = os.path.join(BASE_DIR, "data", "rerank_cache")
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+CHROMA_DB_PATH = os.path.join(PROJECT_ROOT, "data", "chroma_store")
+RERANK_CACHE_DIR = os.path.join(PROJECT_ROOT, "data", "rerank_cache")
+UPLOAD_DIR = os.path.join(PROJECT_ROOT, "data", "uploaded_file")
+STORE_DIR = os.path.join(PROJECT_ROOT, "data", "chunks_store")
 
 def rewrite_query_triad(raw_query: str):
     """

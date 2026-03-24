@@ -14,12 +14,11 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings as LC_OpenAIEmbeddings
 # Load environment variables (API Keys)
 load_dotenv()
 
-# --- DYNAMIC PATH SETUP ---
-# Gets the directory where this script is saved
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Builds the path to the CSV results file
-RESULTS_FILE_PATH = os.path.join(BASE_DIR, "data", "eval_dataset_store", "agent_generation_results.csv")
-
+# Gets the directory of the current script
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+# Builds the path (much cleaner syntax!)
+RESULTS_FILE_PATH = os.path.join(PROJECT_ROOT, "data", "eval_dataset_store", "testset_output.csv")
 async def run_grading_only():
     # 1. Load the CSV using the dynamic path
     file_path = RESULTS_FILE_PATH

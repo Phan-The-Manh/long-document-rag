@@ -14,9 +14,9 @@ load_dotenv()
 
 # --- DYNAMIC PATH SETUP ---
 # Gets the directory where this script is saved
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Builds path relative to the script location
-CHUNKS_STORE_DIR = os.path.join(BASE_DIR, "data", "chunks_store")
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+CHUNKS_STORE_DIR = os.path.join(PROJECT_ROOT, "data", "chunks_store")
 
 # --- 1. CORE UTILITIES ---
 
