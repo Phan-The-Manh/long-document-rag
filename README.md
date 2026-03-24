@@ -123,6 +123,7 @@ graph LR
 * **Python:** 3.10 or higher.
 * **Storage:** ~2GB free space for models and persistent vector database.
 * **Memory:** 16GB RAM recommended for Docling's layout-aware parsing.
+* **OpenAI API**
 
 ### 5.2 Environment Configuration
 It is highly recommended to use a virtual environment to avoid dependency conflicts.
@@ -136,6 +137,10 @@ python -m venv venv
 
 # Activate the environment (Mac/Linux)
 source venv/bin/activate
+```
+**Setting openai api key**
+```bash
+OPENAI_API_KEY = ...
 ```
 
 ### 5.3 Installing Dependencies
