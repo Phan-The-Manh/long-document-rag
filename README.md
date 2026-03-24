@@ -172,7 +172,7 @@ User: exit
 Time for document processing would be about 1 minute for 10 pages(depend on how complex it is)
 
 ### 5.5 Run Evaluation
--Build Knowledge Graph from chunks
+# Build Knowledge Graph from chunks
 ```bash
 python -m src.evaluation.kg_builder
 ```
@@ -191,7 +191,7 @@ Enriched 80/80 relationships.
 Success: Knowledge Graph saved to D:/long_doc_agent/data/chunks_store/user_upload_enriched_kg.json
 ```
 
--Generate Golden Dataset
+# Generate Golden Dataset
 ```bash
 python -m src.evaluation.data_generator
 ```
@@ -203,12 +203,12 @@ Phase 1: Planning 20 scenarios...
 Phase 2: Writing Q&A pairs for 20 scenarios...
 ```
 
--Evaluating retriever
+# Evaluating retriever
 ```bash
 python -m src.evaluation.retrieval_eval
 ```
 
--Evaluating generation
+# Evaluating generation
 ```bash
 python -m src.evaluation.generation_eval
 ```
