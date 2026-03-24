@@ -156,7 +156,18 @@ Execute the main entry point to start the interactive session.
 # Run the application as a module or direct script
 python main.py
 ```
-image
+In terminal:
+```text
+--- LONG_DOC_AGENT ACTIVE ---
+(Press Enter to skip if you don't have a document link)
+Document link/path: [https://arxiv.org/pdf/1706.03762](https://arxiv.org/pdf/1706.03762)
+```
+Then
+```text
+Type 'exit' or 'quit' to stop.
+
+User: exit
+```
 
 Time for document processing would be about 1 minute for 10 pages(depend on how complex it is)
 
@@ -165,25 +176,42 @@ Time for document processing would be about 1 minute for 10 pages(depend on how 
 ```bash
 python -m src.evaluation.kg_builder
 ```
-image
+In terminal:
+```text
+Running Extractors...
+Applying HeadlinesExtractor: 100%|██████████| 74/74 [02:25<00:00,  1.96s/it]
+Applying NERExtractor: 100%|██████████| 74/74 [02:26<00:00,  1.98s/it]
+Cleaning up entity data...
+Resolving synonyms for 152 entities...
+Synonym resolution skipped: 'LangchainLLMWrapper' object has no attribute 'generate_json'
+Building similarity links...
+Applying JaccardSimilarityBuilder: 100%|██████████| 1/1 [00:00<00:00, 16.88it/s]
+Enriching relationships with shared entities...
+Enriched 80/80 relationships.
+Success: Knowledge Graph saved to D:/long_doc_agent/data/chunks_store/user_upload_enriched_kg.json
+```
 
 -Generate Golden Dataset
 ```bash
 python -m src.evaluation.data_generator
 ```
-image
+In terminal:
+```text
+Loading enriched Knowledge Graph from JSON...
+KG Loaded: 139 nodes and 80 relationships found.
+Phase 1: Planning 20 scenarios...
+Phase 2: Writing Q&A pairs for 20 scenarios...
+```
 
 -Evaluating retriever
 ```bash
 python -m src.evaluation.retrieval_eval
 ```
-image
 
 -Evaluating generation
 ```bash
 python -m src.evaluation.generation_eval
 ```
-image
 
 > **Note:** This process is computationally intensive and time-consuming.
 
@@ -223,11 +251,21 @@ The system was benchmarked against two datasets to test scalability, processing 
 | **Baseline** | 20 Pages | Technical Paper | ~2 Minutes | **High Accuracy** |
 | **Stress Test** | 130 Pages | NVIDIA FY25 Q4 | ~13 Minutes | **Performance Drop** |
 
-![Insert Baseline Results Image]
-*Figure 1: High-precision metrics for technical documentation.*
+*Result 1: High-precision metrics for technical documentation.*
+```text
+Evaluation Complete!
+==================== FINAL SCORES ====================
+Context Precision: 0.9075 / 1.0000
+Context Recall: 0.9000 / 1.0000
+```
 
-![Insert Financial Results Image]
-*Figure 2: Performance degradation in high-volume financial data.*
+*Result 2: Performance degradation in high-volume financial data.*
+```text
+Evaluation Complete!
+==================== FINAL SCORES ====================
+Context Precision: 0.7867 / 1.0000
+Context Recall: 0.7208 / 1.0000
+```
 
 ---
 
@@ -236,11 +274,35 @@ The system was benchmarked against two datasets to test scalability, processing 
 The transition from a 20-page technical paper to a 130-page financial report revealed three core challenges:
 
 * **Processing Latency:** Document processing scales linearly at approximately **1 minute per 10 pages**. While acceptable for small sets, large financial filings (100+ pages) require asynchronous processing to maintain user experience.
-* **Context Dilution:** Increased page volume introduced "noise," where the retriever struggled to distinguish between similar financial figures (e.g., Q3 vs. Q4) across the 130-page document.
-* **Data Density:** The high frequency of nested tables in the financial report reduced **Context Recall** compared to the structured prose of the baseline academic paper.
+* **Context Dilution:** Increased page volume introduced "noise," where the retriever struggled to capture relationship between chunks.
 
 **Conclusion:** Scaling to 100+ pages requires more granular chunking and enhanced metadata filtering to prevent retrieval errors in dense datasets.
 
-7. Assumptions & Limitations
+## 7. Limitations
+### 1. Data & Parsing Limitations
+* **Simple Parsing:** **Ignores figures and diagrams**, focusing strictly on text and table structures.
+* **No Hierarchical Summary:** Lack of page-level or section-level summarization reduces the ability to find information based on high-level themes.
+
+### 2. Retrieval & Reasoning Limitations
+* **Linear Agent Logic:** **No multi-hop reasoning**; the agent cannot synthesize facts found in widely separated parts of the document (e.g., connecting Page 2 to Page 50).
+* **Single-Stream Retrieval:** Does not apply multi-retriever or ensemble strategies, which can limit accuracy for complex technical queries.
+* **Lacking of technical evaluation:** Does not evaluate impact of hybrid searching and reranking in depth.
+
+### 3. Operational & Evaluation Limitations
+* **No Checkpointing:** The pipeline lacks "resume" capabilities; if a 100-page document fails at page 90, the process must restart from page 1.
+* **Cost-Limited Evaluation:** Generation quality and RAG metrics (e.g., RAGAS) are not quantitatively measured due to high LLM API running costs.
    
-8. Future Roadmap (The "If I had more time" section)
+## 8. Future Roadmap
+To move the **Long-Doc-Agent** from a Proof of Concept to a production-ready engine, the following enhancements are prioritized:
+
+### 9.1 Advanced Reasoning & Retrieval
+* **Multi-Hop Reasoning:** Implement a **Re-Act** agentic loop to navigate the Knowledge Graph across multiple nodes for complex, non-linear queries.
+* **Query Decomposition:** Break down single user prompts into sub-queries to fetch distinct context chunks before final synthesis.
+
+### 9.2 Resilience & State Management
+* **Strategic Checkpointing:** Implement a persistent state layer (e.g., **Redis** or **SQLite**) to cache intermediate KG construction steps, allowing the system to resume processing if a 100+ page job fails mid-way.
+
+### 9.3 Cost & Efficiency Optimization
+* **Token Budgeting:** Integrate middleware to track and limit API usage per session.
+* **Model Tiering:** Route simple lookups to "light" models (e.g., GPT-4o-mini) while reserving high-tier models for complex KG-driven reasoning.
+---
