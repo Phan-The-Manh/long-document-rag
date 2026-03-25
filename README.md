@@ -15,18 +15,16 @@ Building a system for single 100+ page documents that is:
 
 ### 🛠️ Core Strategy
 
-To ensure a robust, grounded, and hallucination-resistant system for 100+ page documents, I implemented the following high-level design:
+To ensure a robust, grounded, and hallucination-resistant system for 100+ page documents in short time, I just focused on implementing high-level design in document ingestion and document retrieval, keep agent logic simple:
 
 * **Advanced Parsing:** Used **Docling** to transform complex content (scanned PDFs, multi-page tables, and images) into structured data, preserving the document's original hierarchy.
 * **Hybrid Chunking:** Applied **Hierarchical Chunking** with strict token limitations to maintain logical boundaries, enriched with "Contextual DNA" (metadata for section, page number, and table coordinates).
 * **Storage & Hybrid Search:** Leveraged **ChromaDB** for lightweight local storage, utilizing a **Search Triad** (Semantic + Keyword + Metadata) to capture both conceptual and exact-match data.
 * **Precision Re-ranking:** Integrated **FlashRank** to distill initial retrievals into the top 5 high-signal contexts, significantly reducing noise for the LLM.
-* **Stateful Agent Logic:** Built with **LangGraph** to create a stateful agent capable of iterative reasoning, query refinement, and self-correction if initial evidence is insufficient.
+* **Stateful Agent Logic:** Built with **LangGraph** to create a stateful agent, facilitating to handle agent logic from nodes.
 * **Automated Evaluation:** Utilized **RAGAS** to quantitatively measure **Faithfulness**, **Answer Relevance**, and **Context Precision**, **Context Recall** across the long-form document.
 ---
 ## 2. System Design & Architecture
-
-The system is architected as a **Stateful RAG Agent** optimized for high-precision retrieval from dense, structural documents.
 
 ### 📄 Ingestion & Parsing
 Instead of standard PDF parsers that lose formatting, I utilized **Docling** to transform the document into a structured representation.
@@ -46,13 +44,10 @@ To solve the "lost context" problem, the system uses a **Hybrid Hierarchical Chu
 ### 🔍 Retrieval Strategy
 The system employs a multi-stage retrieval pipeline to maximize "groundedness":
 * **Query Transformation:** The system rewrites the user's natural language query into a **Search Triad** (Semantic, Keyword, and Metadata filters) to capture both conceptual and exact-match data.
-* **Factor-Based Searching:** The retriever searches across all factors first; it includes **fallback logic** where it relaxes constraints (e.g., broadening the metadata filter) if the primary search returns empty.
-* **Precision Re-ranking:** We initially retrieve up to 15 potential contexts but use **FlashRank** to select the **Top 5** most relevant snippets. This ensures the LLM receives only high-signal data.
+* **Hybrid Searching + Re-ranking:** Searching with factors in **the triad** to capture up to 15 candidates across all data layers, which FlashRank then distills into the Top 5 high-signal contexts to eliminate noise for the LLM.
 
 ### 🤖 Agentic Logic
-The system is orchestrated using **LangGraph** to manage state and complex decision-making:
-* **Stateful Iteration:** Using a directed graph, the agent can maintain the state of the search and "loop back" to refine its query if the initial retrieval is insufficient.
-* **Self-Correction:** The agent evaluates the retrieved evidence against the user's question before generating a response, significantly reducing the risk of hallucination in dense, 100-page contexts.
+The system is orchestrated using **LangGraph**. This allows to intervene into nodes, branching logics, which is useful to develop more complex iterative loop, multi-hop reasoning and self-correction agent.
 
 ---
 
@@ -91,30 +86,28 @@ graph LR
 ```
 ---
 ## 4. Key Design Decisions & Trade-offs
-### 4.1 Data Ingestion & Parsing
+### 4.1 AI Models
+* **Decision:** use multiple AI models local python docling with its HuggingFace model dependencies, local AI model of Flashrank and api for OpenAI
+* **Trade-off:** by using specialized AI models, I increase accuracy and cost-efficiency. However, it introduces hardward dependencies, requiring to manage a fragmented pipeline where local resource bottlenecks can stall the cloud-based agent's performance.
+  
+### 4.2 Data Ingestion & Parsing
 * **Decision:** Used **Docling** (Layout-Aware) over basic Python libraries (e.g., *PyMuPDF*).
 * **Trade-off:** Docling is **slower and CPU-intensive**, but it accurately reconstructs complex **financial tables**.
 * **Optimization:** **Ignored images** to reduce VRAM usage and processing time.
 
-### 4.2 Processing Strategy: Sliding Window
-* **Decision:** Implemented a **10-page sliding window** for parsing.
-* **Trade-off:** Increases total "walking" time through the document but keeps **RAM usage low** and stable, preventing crashes on high-page-count documents.
+### 4.3 Processing Strategy: Sliding Window
+* **Decision:** Implemented a **10-page sliding window** for parsing with 2 pages overlapped.
+* **Trade-off:** Increases total "walking" time through the document and creates duplicate chunks, but keeps **RAM usage low** and stable, preventing crashes on high-page-count documents.
 * **Result:** Ensures "Contextual DNA" (metadata) is consistently captured across chunk boundaries.
 
-### 4.3 Storage & Retrieval: ChromaDB
+### 4.4 Storage & Retrieval: ChromaDB
 * **Decision:** Selected **ChromaDB** for the Vector Store.
 * **Trade-off:** * **Pros:** Fast setup, low latency for local retrieval, and easy metadata filtering.
     * **Cons:** Limited horizontal scaling compared to cloud-native databases (e.g., Pinecone).
 
----
-
-### Summary Table: Decision Matrix
-
-| Component | Choice | Trade-off | Benefit |
-| :--- | :--- | :--- | :--- |
-| **Parser** | **Docling** | Slower speed | High Table Accuracy |
-| **Images** | **Excluded** | Loses Visual Data | ~70% Less Memory |
-| **Database** | **ChromaDB** | Local Scaling | Instant Setup/Search |
+### 4.5 Agent 
+* **Decision:** design linear agent logic, with simple router and one time retrieval, that ignores follow up questions.
+* **Trade-off:** focus on power of document processing technique and retrieval method with low latency, but make chatbot less effective at dealing with complex questions.
 
 ---
 
@@ -138,7 +131,7 @@ python -m venv venv
 # Activate the environment (Mac/Linux)
 source venv/bin/activate
 ```
-**Setting openai api key:** create .env file and set api key.
+**Setting OpenAI API key:** create .env file and set api key.
 ```bash
 OPENAI_API_KEY = ...
 ```
@@ -165,7 +158,7 @@ In terminal:
 ```text
 --- LONG_DOC_AGENT ACTIVE ---
 (Press Enter to skip if you don't have a document link)
-Document link/path: [https://arxiv.org/pdf/1706.03762](https://arxiv.org/pdf/1706.03762)
+Document link/path: 
 ```
 Then
 ```text
@@ -261,7 +254,7 @@ The system was benchmarked against two datasets to test scalability, processing 
 Evaluation Complete!
 ==================== FINAL SCORES ====================
 Context Precision: 0.9075 / 1.0000
-Context Recall: 0.9000 / 1.0000
+Context Recall: 0.8500 / 1.0000
 ```
 
 *Result 2: Performance degradation in high-volume financial data.*
@@ -279,7 +272,7 @@ Context Recall: 0.7208 / 1.0000
 The transition from a 20-page technical paper to a 130-page financial report revealed three core challenges:
 
 * **Processing Latency:** Document processing scales linearly at approximately **1 minute per 10 pages**. While acceptable for small sets, large financial filings (100+ pages) require asynchronous processing to maintain user experience.
-* **Context Dilution:** Increased page volume introduced "noise," where the retriever struggled to capture relationship between chunks. Increasing in number of personas also contribute to lower performance of chatbot.
+* **Context Dilution:** Increased page volume introduced "noise," where the retriever struggled to capture relationship between chunks.
 
 **Conclusion:** Scaling to 100+ pages requires more granular chunking and enhanced metadata filtering to prevent retrieval errors in dense datasets.
 
@@ -287,7 +280,6 @@ The transition from a 20-page technical paper to a 130-page financial report rev
 ### 1. Data & Parsing Limitations
 * **Simple Parsing:** **Ignores figures and diagrams**, focusing strictly on text and table structures.
 * **No Hierarchical Summary:** Lack of page-level or section-level summarization reduces the ability to find information based on high-level themes.
-* **Overlaped pages:** create duplicate chunks, but important to retain structural context.
 
 ### 2. Retrieval & Reasoning Limitations
 * **Linear Agent Logic:** **No multi-hop reasoning**; the agent cannot synthesize facts found in widely separated parts of the document (e.g., connecting Page 2 to Page 50).
@@ -302,8 +294,7 @@ The transition from a 20-page technical paper to a 130-page financial report rev
 To move the **Long-Doc-Agent** from a Proof of Concept to a production-ready engine, the following enhancements are prioritized:
 
 ### 8.1 Advanced Reasoning & Retrieval
-* **Multi-Hop Reasoning:** Implement a **Re-Act** agentic loop to navigate the Knowledge Graph across multiple nodes for complex, non-linear queries.
-* **Query Decomposition:** Break down single user prompts into sub-queries to fetch distinct context chunks before final synthesis.
+* **Multi-Hop Reasoning:** To handle complex queries, the agent executes Multi-Hop Reasoning by decomposing the prompt into logical sub-questions, retrieving targeted context for each, and synthesizing a comprehensive final response.
 
 ### 8.2 Resilience & State Management
 * **Strategic Checkpointing:** Implement a persistent state layer (e.g., **Redis** or **SQLite**) to cache intermediate KG construction steps, allowing the system to resume processing if a 100+ page job fails mid-way.
