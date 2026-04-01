@@ -102,7 +102,8 @@ graph LR
 
 ### 4.4 Storage & Retrieval: ChromaDB
 * **Decision:** Selected **ChromaDB** for the Vector Store.
-* **Trade-off:** * **Pros:** Fast setup, low latency for local retrieval, and easy metadata filtering.
+* **Trade-off:**
+    * **Pros:** Fast setup, low latency for local retrieval, and easy metadata filtering.
     * **Cons:** Limited horizontal scaling compared to cloud-native databases (e.g., Pinecone).
 
 ### 4.5 Agent 
