@@ -176,18 +176,18 @@ async def run_generation(my_kg):
     personas = [
         Persona(name="Junior Developer", role_description="Needs simple 'how-to' guides and definitions."),
         Persona(name="Solutions Architect", role_description="Asks about system scalability and deep dependencies."),
-        Persona(
-            name="Quantitative Auditor", 
-            role_description="Performs cross-page data validation, trend analysis (CAGR), and multi-step calculations. Does not accept surface-level answers; requires raw numbers and the logic used to derive the result."
-        ),
-        Persona(
-            name="Project Manager", 
-            role_description="Asks for high-level summaries, key milestones, and 'who is responsible for what' without getting into technical weeds."
-        ),
-        Persona(
-            name="Equity Research Analyst", 
-            role_description="Focuses on precise numeric trends, year-over-year (YoY) comparisons, specific fiscal risks, and footnotes in financial tables."
-        )
+        # Persona(
+        #     name="Quantitative Auditor", 
+        #     role_description="Performs cross-page data validation, trend analysis (CAGR), and multi-step calculations. Does not accept surface-level answers; requires raw numbers and the logic used to derive the result."
+        # ),
+        # Persona(
+        #     name="Project Manager", 
+        #     role_description="Asks for high-level summaries, key milestones, and 'who is responsible for what' without getting into technical weeds."
+        # ),
+        # Persona(
+        #     name="Equity Research Analyst", 
+        #     role_description="Focuses on precise numeric trends, year-over-year (YoY) comparisons, specific fiscal risks, and footnotes in financial tables."
+        # )
     ]
 
     # Setup directories securely using dynamic path

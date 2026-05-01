@@ -1,4 +1,5 @@
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import MemorySaver
 from src.agent.state import AgentState
 from src.agent.nodes.router import router_node, route_decision
 from src.agent.nodes.retriever import retriever_node
@@ -33,6 +34,5 @@ workflow.add_edge("retriever", "generator")
 workflow.add_edge("generator", END)
 
 # 4. Compile the Graph
-# checkpointer allows for persistence/memory (optional but recommended)
-app = workflow.compile()
+app = workflow.compile(checkpointer=MemorySaver())
 

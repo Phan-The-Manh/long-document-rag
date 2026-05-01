@@ -26,7 +26,7 @@ def ensure_directories():
     """Ensures all required project folders exist."""
     for folder in [UPLOAD_DIR, STORE_DIR]:
         if not os.path.exists(folder):
-            print(f"📁 Creating missing directory: {folder}")
+            print(f"[DIR] Creating missing directory: {folder}")
             os.makedirs(folder, exist_ok=True)
 
 def ensure_local_path(source: str, target_dir: str = UPLOAD_DIR):
@@ -40,7 +40,7 @@ def ensure_local_path(source: str, target_dir: str = UPLOAD_DIR):
         os.remove(local_destination)
 
     if source.startswith(("http://", "https://")):
-        print(f"🌐 Downloading from URL: {source}")
+        print(f"[HTTP] Downloading from URL: {source}")
         response = requests.get(source, timeout=30)
         response.raise_for_status()
         with open(local_destination, "wb") as f:
@@ -49,11 +49,11 @@ def ensure_local_path(source: str, target_dir: str = UPLOAD_DIR):
     else:
         clean_source = source.strip().strip('"').strip("'")
         if os.path.exists(clean_source):
-            print(f"📂 Fresh Copy: {clean_source} -> {local_destination}")
+            print(f"[FILE] Fresh Copy: {clean_source} -> {local_destination}")
             shutil.copy2(clean_source, local_destination)
             return local_destination
         else:
-            raise FileNotFoundError(f"❌ File not found at: {clean_source}")
+            raise FileNotFoundError(f"File not found at: {clean_source}")
         
 def parse_pdf_to_docs(source_path: str, window_size: int = 10, overlap: int = 2):
     pipeline_options = PdfPipelineOptions(
@@ -68,7 +68,7 @@ def parse_pdf_to_docs(source_path: str, window_size: int = 10, overlap: int = 2)
         reader = PdfReader(source_path)
         total_pages = len(reader.pages)
     except Exception as e:
-        print(f"⚠️ Error reading PDF metadata: {e}. Falling back to standard conversion.")
+        print(f"[WARN] Error reading PDF metadata: {e}. Falling back to standard conversion.")
         return [converter.convert(source_path).document]
 
     documents = []
@@ -95,7 +95,7 @@ def chunk_documents(documents: list, max_tokens: int = 512):
         chunks = list(chunker.chunk(doc))
         all_chunks.extend(chunks)
         
-    print(f"✅ Extraction complete. Created {len(all_chunks)} total chunks.")
+    print(f"[OK] Extraction complete. Created {len(all_chunks)} total chunks.")
     return all_chunks
 
 def build_enriched_chunk_and_metadata(chunk, source_name: str, chunk_index: int) -> Tuple[str, Dict[str, Any]]:
@@ -139,11 +139,11 @@ def prepare_source_for_chroma(input_source: str, source_name: str) -> Dict[str, 
     try:
         source_path = ensure_local_path(input_source, target_dir=UPLOAD_DIR)
     except Exception as e:
-        print(f"❌ Critical Error resolving source: {e}")
+        print(f"[ERROR] Critical Error resolving source: {e}")
         return {}
 
     # 2. Parse PDF
-    print(f"🚀 Starting PDF Conversion: {source_name}")
+    print(f"[START] Starting PDF Conversion: {source_name}")
     doc_objects = parse_pdf_to_docs(source_path, window_size=10, overlap=2)
     
     # 3. Chunk
@@ -153,7 +153,7 @@ def prepare_source_for_chroma(input_source: str, source_name: str) -> Dict[str, 
     metadatas = []
     ids = []
 
-    print(f"✨ Enriching {len(raw_chunks)} chunks...")
+    print(f"[INFO] Enriching {len(raw_chunks)} chunks...")
 
     # 4. Enrich
     for i, chunk in enumerate(raw_chunks):
@@ -178,9 +178,9 @@ def prepare_source_for_chroma(input_source: str, source_name: str) -> Dict[str, 
     try:
         with open(save_path, "w", encoding="utf-8") as f:
             json.dump(output_data, f, indent=4, ensure_ascii=False)
-        print(f"🎉 Success! Total chunks: {len(enriched_documents)}")
-        print(f"📂 Saved to: {save_path}")
+        print(f"[DONE] Success! Total chunks: {len(enriched_documents)}")
+        print(f"[FILE] Saved to: {save_path}")
     except Exception as e:
-        print(f"❌ Error saving JSON: {e}")
+        print(f"[ERROR] Error saving JSON: {e}")
 
     return output_data

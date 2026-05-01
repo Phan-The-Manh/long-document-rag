@@ -24,17 +24,16 @@ gen_prompt_with_context = ChatPromptTemplate.from_messages([
     
     ### RULES:
     1. Use ONLY the provided context to answer. No prior knowledge.
-    2. MANDATORY CITATION: Every fact or value you provide must be followed by an inline citation in the format: (Source, Page X). 
-    3. If multiple sources support a fact, cite all of them.
-    4. If the metadata says "Page(s): Unknown", use the Source and Section name instead.
-    5. If the answer is not in the context, say: "I don't have enough information to answer this."
-    6. For tables/numbers: Extract precisely and cite the specific table/section source.
-    7. Be concise but complete.
+    2. Do NOT include inline citations in the answer text.
+    3. If the answer is not in the context, say: "I don't have enough information to answer this."
+    4. For tables/numbers: Extract precisely from the context.
+    5. Be concise but complete.
 
     ### OUTPUT FORMAT:
-    - [Direct Answer with inline citations]
-    - [Brief Reasoning/Calculation if needed]
-    - [Sources List: A bulleted list of unique sources/sections used]
+    Write a direct prose answer with no inline citations. Add brief reasoning only if needed for clarity. Then end with exactly this block (no square brackets, plain text only):
+
+    Sources List:
+    - Source: X | Section: Y | Page: Z
     """),
 
     ("human", """
@@ -72,35 +71,29 @@ def generator_node(state: AgentState):
     # 3. Logic Branching
     if is_search_required:
         print("Generating with context!\n")
-        if docs:
+        if not docs:
+            answer_text = "I don't have enough information to answer this."
+        else:
             context_parts = []
             for d in docs:
-                # Extract your specific metadata keys
                 source = d.metadata.get("source", "Unknown Document")
                 path = d.metadata.get("section_path", "General Section")
                 pages = d.metadata.get("pages_label", "N/A")
                 content = d.page_content
-                
-                # Create a structured header for each chunk
                 header = f"[Source: {source} | Section: {path} | Page(s): {pages}]"
-                chunk_text = f"{header}\nContent: {content}"
-                
-                context_parts.append(chunk_text)
-            
+                context_parts.append(f"{header}\nContent: {content}")
+
             context_str = "\n\n---\n\n".join(context_parts)
-        else:
-            # Triggers the "I do not know" logic in your prompt
-            context_str = ""
-        inputs["context"] = context_str
+            inputs["context"] = context_str
 
-        formatted_prompt = gen_prompt_with_context.format(
-            context=context_str, 
-            input=messages[-1].content
-        )
-        print("Formatted Prompt for Generator with Context:\n")
-        print(formatted_prompt) # If this shows "Context: " followed by nothing, that's your bug!
+            formatted_prompt = gen_prompt_with_context.format(
+                context=context_str,
+                input=messages[-1].content
+            )
+            print("Formatted Prompt for Generator with Context:\n")
+            print(formatted_prompt)
 
-        answer_text = generator_with_retrieval_chain.invoke(inputs)
+            answer_text = generator_with_retrieval_chain.invoke(inputs)
         
     else:
         print("Generating without context (general knowledge)!\n")

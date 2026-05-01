@@ -23,7 +23,7 @@ from ragas.metrics import Faithfulness, AnswerRelevancy, AnswerCorrectness
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings as LC_OpenAIEmbeddings
-
+from ragas.run_config import RunConfig
 load_dotenv()
 
 # --- DYNAMIC PATH SETUP ---
@@ -31,7 +31,7 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
 INPUT_CSV_PATH = os.path.join(PROJECT_ROOT, "data", "eval_dataset_store", "testset_output.csv")
 OUTPUT_CSV_PATH = os.path.join(PROJECT_ROOT, "data", "eval_dataset_store", "agent_generation_results.csv")
-
+ANSWERS_CSV_PATH = os.path.join(PROJECT_ROOT, "data", "eval_dataset_store", "answer_generation.csv")
 async def calculate_generation_metrics(eval_dataset: EvaluationDataset) -> pd.DataFrame:
     print("\n⚖️ Initializing Ragas Generation Graders...")
     
@@ -50,13 +50,13 @@ async def calculate_generation_metrics(eval_dataset: EvaluationDataset) -> pd.Da
     ]
 
     print("🚀 Starting Ragas Evaluation Loop (Async)...")
-    
+    config = RunConfig(max_workers=10, timeout=60)
     results = evaluate(
         dataset=eval_dataset,
         metrics=metrics,
         llm=evaluator_llm,
         embeddings=evaluator_embeddings,
-        max_workers=10
+        run_config=config
     )
 
     return results.to_pandas()
@@ -134,6 +134,23 @@ async def run_agent_generation_evaluation():
     if not samples:
         print("🚫 No samples were successfully generated. Ending run.")
         return
+    
+    # --- PHASE 1.5: SAVE GENERATED ANSWERS IMMEDIATELY ---
+    generated_data = []
+    for s in samples:
+        generated_data.append({
+            "user_input": s.user_input,
+            "generated_answer": s.response,
+            "retrieved_contexts": s.retrieved_contexts,
+            "reference": s.reference
+        })
+
+    # Create a separate DataFrame for the raw answers
+    answers_df = pd.DataFrame(generated_data)
+
+    # Save to the specific path you requested
+    answers_df.to_csv(ANSWERS_CSV_PATH, index=False)
+    print(f"💾 Saved {len(answers_df)} generated answers to: {ANSWERS_CSV_PATH}")
 
     # --- PHASE 2: CALCULATE METRICS ---
     eval_dataset = EvaluationDataset(samples=samples)

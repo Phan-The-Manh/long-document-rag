@@ -2,7 +2,12 @@ import sys
 import time
 import uuid
 from langchain_core.messages import HumanMessage
-from src.doc_processing.source_to_chroma import process_and_save_full_pipeline
+
+# Import both the pipeline AND the clear function from your source file
+from src.doc_processing.source_to_chroma import (
+    process_and_save_full_pipeline, 
+    clear_chroma_database
+)
 from src.agent.graph import app 
 
 def main():
@@ -29,14 +34,17 @@ def main():
     # 2. Continuous Chat Loop
     print("Type 'exit' or 'quit' to stop.")
     
-    # thread_id ensures LangGraph keeps track of the conversation history
+    # Generate a unique thread_id for this session's conversation history
     config = {"configurable": {"thread_id": str(uuid.uuid4())}}
     
     while True:
         user_input = input("\nUser: ").strip()
         
         if user_input.lower() in ['quit', 'exit']:
-            print("Shutting down. Goodbye!")
+            print("Shutting down...")
+            # --- CLEAR FUNCTION CALLED ON EXIT ---
+            clear_chroma_database() 
+            print("Goodbye!")
             break
         
         if not user_input:
@@ -44,20 +52,17 @@ def main():
 
         print("Thinking...")
         try:
-            # Wrap user input as a HumanMessage for consistency
-            # Invoke the graph
+            # Invoke the graph with history tracking
             final_state = app.invoke(
                 {"messages": [HumanMessage(content=user_input)]}, 
                 config=config
             )
             
-            # Extract the content from the last message (which should be an AIMessage)
             response = final_state["messages"][-1].content
             print(f"\nAgent: {response}")
             
         except Exception as e:
             print(f"Agent Error: {e}")
-            # Printing the full error for debugging
             import traceback
             traceback.print_exc()
         
@@ -67,5 +72,7 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n[SYSTEM] Interrupted. Closing safely...")
+        # Ensure cleanup even if the user hits Ctrl+C
+        print("\n[SYSTEM] Interrupted. Cleaning up...")
+        clear_chroma_database()
         sys.exit(0)

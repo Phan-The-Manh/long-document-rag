@@ -1,83 +1,83 @@
+import os
 import pandas as pd
 import asyncio
-import ast
-import os
 from dotenv import load_dotenv
 
-# Ragas & Langchain Imports
-from ragas import EvaluationDataset, SingleTurnSample, evaluate, RunConfig
+# Ragas & LangChain Imports
+from ragas import evaluate, EvaluationDataset
 from ragas.metrics import Faithfulness, AnswerRelevancy, AnswerCorrectness
 from ragas.llms import LangchainLLMWrapper
 from ragas.embeddings import LangchainEmbeddingsWrapper
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings as LC_OpenAIEmbeddings
+from ragas.run_config import RunConfig
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-# Load environment variables (API Keys)
 load_dotenv()
 
-# Gets the directory of the current script
+# --- 1. SETUP PATHS ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
-# Builds the path (much cleaner syntax!)
-RESULTS_FILE_PATH = os.path.join(PROJECT_ROOT, "data", "eval_dataset_store", "testset_output.csv")
-async def run_grading_only():
-    # 1. Load the CSV using the dynamic path
-    file_path = RESULTS_FILE_PATH
-    
-    if not os.path.exists(file_path):
-        print(f"❌ Error: File not found at {file_path}")
+INPUT_CSV = os.path.join(PROJECT_ROOT, "data", "eval_dataset_store", "answer_generation.csv")
+OUTPUT_CSV = os.path.join(PROJECT_ROOT, "data", "eval_dataset_store", "final_eval_results.csv")
+
+import ast # Make sure this is imported at the top
+
+async def main():
+    if not os.path.exists(INPUT_CSV):
+        print(f"❌ Error: {INPUT_CSV} not found!")
         return
 
-    df = pd.read_csv(file_path)
-    print(f"📂 Loaded {len(df)} samples from {file_path}. Starting Grading Phase...")
+    print(f"📂 Loading generated answers from: {INPUT_CSV}")
+    df = pd.read_csv(INPUT_CSV)
 
-    # 2. Convert DataFrame rows back into Ragas Samples
-    samples = []
-    for _, row in df.iterrows():
-        # Handle string-to-list conversion for retrieved contexts
-        try:
-            retrieved_ctx = ast.literal_eval(row['retrieved_contexts']) if isinstance(row['retrieved_contexts'], str) else row['retrieved_contexts']
-        except (ValueError, SyntaxError):
-            retrieved_ctx = [row['retrieved_contexts']]
-        
-        samples.append(SingleTurnSample(
-            user_input=row['user_input'],
-            response=row['response'],
-            retrieved_contexts=retrieved_ctx,
-            reference=row['reference']
-        ))
+    # --- THE CRITICAL FIX ---
+    # Convert string-represented lists back into actual Python lists
+    for col in ['retrieved_contexts', 'reference_contexts']:
+        if col in df.columns:
+            print(f"🔧 Converting {col} from string to list...")
+            df[col] = df[col].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
+    # ------------------------
 
-    eval_dataset = EvaluationDataset(samples=samples)
-
-    # 3. Setup Grader Models with Langchain Wrappers
-    evaluator_llm = LangchainLLMWrapper(ChatOpenAI(model="gpt-4o-mini"))
-    evaluator_embeddings = LangchainEmbeddingsWrapper(LC_OpenAIEmbeddings(model="text-embedding-3-small"))
-
-    # 4. Run the Evaluation with Backpressure (max_workers) and higher Timeout
-    run_config = RunConfig(max_workers=4, timeout=120) 
+    # 1. RENAME THE COLUMN DIRECTLY
+    if 'generated_answer' in df.columns:
+        df = df.rename(columns={'generated_answer': 'response'})
     
-    print("🚀 Running Ragas Grader (LLM-as-a-judge)...")
+    # 2. CREATE DATASET (Now it has the 'response' column Ragas wants)
+    dataset = EvaluationDataset.from_pandas(df)
+
+    # --- 3. INITIALIZE EVALUATORS ---
+    eval_llm = LangchainLLMWrapper(ChatOpenAI(model="gpt-4o-mini"))
+    eval_embeddings = LangchainEmbeddingsWrapper(OpenAIEmbeddings(model="text-embedding-3-small"))
+
+    metrics = [
+        Faithfulness(),
+        AnswerRelevancy(),
+        AnswerCorrectness()
+    ]
+
+    # --- 4. RUN EVALUATION ---
+    print("⚖️ Starting Evaluation (Using stable settings)...")
+    
+    # Using the safer config we discussed to avoid timeouts
+    config = RunConfig(max_workers=4, timeout=180)
+
     results = evaluate(
-        dataset=eval_dataset,
-        metrics=[Faithfulness(), AnswerRelevancy(), AnswerCorrectness()],
-        llm=evaluator_llm,
-        embeddings=evaluator_embeddings,
-        run_config=run_config
+        dataset=dataset,
+        metrics=metrics,
+        llm=eval_llm,
+        embeddings=eval_embeddings,
+        run_config=config
+        # column_map is no longer needed because we renamed it above
     )
 
-    # 5. Save and PRINT the results
+    # --- 5. SAVE & DISPLAY ---
     results_df = results.to_pandas()
-    results_df.to_csv(file_path, index=False)
+    results_df.to_csv(OUTPUT_CSV, index=False)
     
-    print("\n" + "="*50)
-    print("✅ GRADING COMPLETE")
-    print("="*50)
-    
-    # Calculate and print mean scores
-    for metric_name, score in results.items():
-        print(f"{metric_name:20}: {score:.4f} / 1.0000")
-    
-    print("="*50)
-    print(f"📄 Detailed results saved back to: {file_path}")
+    print("\n" + "="*40)
+    print("✅ EVALUATION COMPLETE")
+    print(f"📊 Results saved to: {OUTPUT_CSV}")
+    print("="*40)
+    print(results)
 
 if __name__ == "__main__":
-    asyncio.run(run_grading_only())
+    asyncio.run(main())
