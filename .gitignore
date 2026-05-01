@@ -41,3 +41,10 @@ docling_models/
 ._*
 Thumbs.db
 desktop.ini
+
+# --- Claude Code ---
+.claude/
+
+# --- Frontend ---
+frontend/node_modules/
+frontend/README.md
