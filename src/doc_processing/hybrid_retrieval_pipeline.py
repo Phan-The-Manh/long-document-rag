@@ -1,10 +1,14 @@
 import os
 import json
-from openai import OpenAI
 import chromadb
-from chromadb.utils import embedding_functions
 from flashrank import Ranker, RerankRequest
 from dotenv import load_dotenv
+
+from src.llm_clients.openai import (
+    get_openai_client,
+    get_chroma_embedding_function,
+    MODEL_CONFIG,
+)
 
 # Load the .env file containing OPENAI_API_KEY
 load_dotenv()
@@ -22,7 +26,7 @@ def rewrite_query_triad(raw_query: str):
     Refined Triad: Transforms raw query into Semantic, Keyword, and Metadata.
     Specifically parses for Page Numbers and Section Headers.
     """
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    client = get_openai_client()
 
     prompt = f"""
     You are a technical search expert. Categorize the user's question into three search formats.
@@ -47,9 +51,9 @@ def rewrite_query_triad(raw_query: str):
     """
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=MODEL_CONFIG["query_rewriter"]["model"],
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.1,
+        temperature=MODEL_CONFIG["query_rewriter"]["temperature"],
         response_format={"type": "json_object"}
     )
 
@@ -66,15 +70,12 @@ def stage_1_hybrid_retriever(triad: dict, top_n: int = 15):
     # Use the dynamic path
     db_path = CHROMA_DB_PATH
     client = chromadb.PersistentClient(path=db_path)
-    
-    # 1. Setup Embedding Function
-    openai_ef = embedding_functions.OpenAIEmbeddingFunction(
-        api_key=os.environ.get("OPENAI_API_KEY"),
-        model_name="text-embedding-3-large"
-    )
-    
+
+    # 1. Setup Embedding Function (cached, built once per process)
+    openai_ef = get_chroma_embedding_function()
+
     collection = client.get_collection(
-        name="technical_docs_collection", 
+        name="technical_docs_collection",
         embedding_function=openai_ef
     )
 
