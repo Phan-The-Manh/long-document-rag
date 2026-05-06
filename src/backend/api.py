@@ -1,6 +1,7 @@
 import sys
 import json
 import time
+from contextlib import asynccontextmanager
 from typing import Optional
 
 sys.stdout.reconfigure(encoding='utf-8')
@@ -13,12 +14,26 @@ from starlette.concurrency import run_in_threadpool
 
 from langchain_core.messages import HumanMessage, AIMessageChunk
 from src.agent.graph import app as graph_app
-from src.doc_processing.source_to_chroma import process_and_save_full_pipeline
+from src.doc_processing.source_to_chroma import (
+    process_and_save_full_pipeline,
+    delete_document,
+    list_documents,
+)
 
-app = FastAPI(title="Local Chatbot Backend")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    docs = await run_in_threadpool(list_documents)
+    if docs:
+        latest = docs[-1]
+        app.state.ingested = True
+        app.state.ingested_source = latest["source"]
+        print(f"[STARTUP] Restored ingested state: {len(docs)} document(s) found in ChromaDB.")
+    else:
+        app.state.ingested = False
+        app.state.ingested_source = None
+    yield
 
-app.state.ingested = False
-app.state.ingested_source = None
+app = FastAPI(title="Local Chatbot Backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -60,6 +75,20 @@ async def reset():
     app.state.ingested = False
     app.state.ingested_source = None
     return {"status": "ok"}
+
+@app.get("/documents")
+async def documents(tenant_id: Optional[str] = None):
+    docs = await run_in_threadpool(list_documents, tenant_id)
+    return {"documents": docs}
+
+
+@app.delete("/documents/{doc_id}")
+async def delete_doc(doc_id: str, version: str = "v1", tenant_id: str = "default"):
+    removed = await run_in_threadpool(delete_document, doc_id, version, tenant_id)
+    if removed == 0:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"status": "deleted", "removed_chunks": removed}
+
 
 @app.post("/ingest")
 async def ingest(payload: IngestRequest):
