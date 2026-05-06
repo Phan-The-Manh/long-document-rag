@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from src.agent.state import AgentState
+from src.llm_clients.openai import get_chat_model
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -48,7 +48,7 @@ You are a Context-Aware Topic Classifier.
 - is_search_required = FALSE: If the answer is already visible in the CONTEXT, or if the user is just saying "thanks", "hello", or "goodbye".
 """)
 
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
+llm = get_chat_model("router")
 retrieval_llm = llm.with_structured_output(RetrievalRoute)
 follow_up_checker = llm.with_structured_output(FollowUpRoute)
 

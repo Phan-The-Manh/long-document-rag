@@ -1,13 +1,13 @@
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import AIMessage
 from src.agent.state import AgentState
+from src.llm_clients.openai import get_chat_model
 from dotenv import load_dotenv
 load_dotenv()
 
 # 1. Initialize the Model
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
+llm = get_chat_model("generator")
 
 # 2. Define Prompts
 gen_prompt = ChatPromptTemplate.from_messages([
@@ -25,16 +25,16 @@ gen_prompt_with_context = ChatPromptTemplate.from_messages([
     ### RULES:
     1. Use ONLY the provided context to answer. No prior knowledge.
     2. Do NOT include inline citations in the answer text.
-    3. If the answer is not in the context, say: "I don't have enough information to answer this."
+    3. If the answer is not in the context, respond with ONLY: "I don't have enough information to answer this." — no Sources List.
     4. For tables/numbers: Extract precisely from the context.
     5. Be concise but complete.
 
-    ### OUTPUT FORMAT:
+    ### OUTPUT FORMAT (only when the answer IS in the context):
     Write a direct prose answer with no inline citations. Add brief reasoning only if needed for clarity. Then end with exactly this block (no square brackets, plain text only):
 
     Sources List:
     - Source: X | Section: Y | Page: Z
-    """),
+"""),
 
     ("human", """
     Context:
