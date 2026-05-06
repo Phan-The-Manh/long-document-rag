@@ -1,8 +1,10 @@
+import hashlib
 import json
-import shutil
 import time
 import os
 import requests
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 from typing import Dict, Any, Tuple, List
 
 # Docling & PDF imports
@@ -29,31 +31,38 @@ def ensure_directories():
             print(f"[DIR] Creating missing directory: {folder}")
             os.makedirs(folder, exist_ok=True)
 
-def ensure_local_path(source: str, target_dir: str = UPLOAD_DIR):
-    # CRITICAL FIX: Ensure target directory exists before file operations
+def ensure_local_path(source: str, target_dir: str = UPLOAD_DIR) -> Tuple[str, str]:
+    """Resolve `source` to a local file under `target_dir/{doc_id}.pdf`.
+    Returns (local_path, doc_id) where doc_id = sha256(bytes)[:16].
+    Idempotent: re-uploading the same bytes is a no-op on disk."""
     os.makedirs(target_dir, exist_ok=True)
-        
-    local_destination = os.path.join(target_dir, "user_upload.pdf")
-
-    # Force delete existing file to prevent metadata "ghosting"
-    if os.path.exists(local_destination):
-        os.remove(local_destination)
 
     if source.startswith(("http://", "https://")):
         print(f"[HTTP] Downloading from URL: {source}")
         response = requests.get(source, timeout=30)
         response.raise_for_status()
-        with open(local_destination, "wb") as f:
-            f.write(response.content)
-        return local_destination
+        content = response.content
     else:
-        clean_source = source.strip().strip('"').strip("'")
-        if os.path.exists(clean_source):
-            print(f"[FILE] Fresh Copy: {clean_source} -> {local_destination}")
-            shutil.copy2(clean_source, local_destination)
-            return local_destination
+        if source.startswith("file://"):
+            clean_source = url2pathname(urlparse(source).path)
         else:
+            clean_source = source.strip().strip('"').strip("'")
+        if not os.path.exists(clean_source):
             raise FileNotFoundError(f"File not found at: {clean_source}")
+        with open(clean_source, "rb") as f:
+            content = f.read()
+
+    doc_id = hashlib.sha256(content).hexdigest()[:16]
+    local_destination = os.path.join(target_dir, f"{doc_id}.pdf")
+
+    if not os.path.exists(local_destination):
+        with open(local_destination, "wb") as f:
+            f.write(content)
+        print(f"[FILE] Wrote {local_destination} (doc_id={doc_id})")
+    else:
+        print(f"[FILE] Reused existing {local_destination} (doc_id={doc_id})")
+
+    return local_destination, doc_id
         
 def parse_pdf_to_docs(source_path: str, window_size: int = 10, overlap: int = 2):
     pipeline_options = PdfPipelineOptions(
@@ -98,7 +107,14 @@ def chunk_documents(documents: list, max_tokens: int = 512):
     print(f"[OK] Extraction complete. Created {len(all_chunks)} total chunks.")
     return all_chunks
 
-def build_enriched_chunk_and_metadata(chunk, source_name: str, chunk_index: int) -> Tuple[str, Dict[str, Any]]:
+def build_enriched_chunk_and_metadata(
+    chunk,
+    source_name: str,
+    chunk_index: int,
+    doc_id: str,
+    tenant_id: str = "default",
+    version: str = "v1",
+) -> Tuple[str, Dict[str, Any]]:
     # 1. Extract Page Numbers
     pages_list = sorted({
         prov.page_no
@@ -121,9 +137,20 @@ def build_enriched_chunk_and_metadata(chunk, source_name: str, chunk_index: int)
     )
 
     # 4. Final Metadata
+    # content_hash drives idempotency: if the same (tenant, source, version, index)
+    # already has this content_hash in the store, the upsert is a true no-op.
+    content_hash = hashlib.sha256(chunk.text.encode("utf-8")).hexdigest()
+    id_seed = f"{tenant_id}|{doc_id}|{version}|{chunk_index}|{content_hash}".encode("utf-8")
+    chunk_id = hashlib.sha256(id_seed).hexdigest()[:16]
+
     metadata = {
         "source": source_name,
-        "chunk_id": f"{source_name}_chunk_{chunk_index}",
+        "doc_id": doc_id,
+        "tenant_id": tenant_id,
+        "version": version,
+        "chunk_id": chunk_id,
+        "chunk_index": chunk_index,
+        "content_hash": content_hash,
         "first_page": first_page,
         "pages_label": pages_str,
         "section_path": breadcrumb,
@@ -135,20 +162,20 @@ def prepare_source_for_chroma(input_source: str, source_name: str) -> Dict[str, 
     # 0. Safety Check: Ensure folders exist
     ensure_directories()
 
-    # 1. Resolve Path
+    # 1. Resolve Path (also produces content-addressable doc_id)
     try:
-        source_path = ensure_local_path(input_source, target_dir=UPLOAD_DIR)
+        source_path, doc_id = ensure_local_path(input_source, target_dir=UPLOAD_DIR)
     except Exception as e:
         print(f"[ERROR] Critical Error resolving source: {e}")
-        return {}
+        raise
 
     # 2. Parse PDF
-    print(f"[START] Starting PDF Conversion: {source_name}")
+    print(f"[START] Starting PDF Conversion: {source_name} (doc_id={doc_id})")
     doc_objects = parse_pdf_to_docs(source_path, window_size=10, overlap=2)
-    
+
     # 3. Chunk
     raw_chunks = chunk_documents(doc_objects, max_tokens=480)
-    
+
     enriched_documents = []
     metadatas = []
     ids = []
@@ -158,9 +185,10 @@ def prepare_source_for_chroma(input_source: str, source_name: str) -> Dict[str, 
     # 4. Enrich
     for i, chunk in enumerate(raw_chunks):
         enriched_text, metadata = build_enriched_chunk_and_metadata(
-            chunk, 
-            source_name=source_name, 
-            chunk_index=i
+            chunk,
+            source_name=source_name,
+            chunk_index=i,
+            doc_id=doc_id,
         )
         enriched_documents.append(enriched_text)
         metadatas.append(metadata)
@@ -173,7 +201,9 @@ def prepare_source_for_chroma(input_source: str, source_name: str) -> Dict[str, 
         "ids": ids
     }
 
-    save_path = os.path.join(STORE_DIR, f"{source_name}_enriched.json")
+    # Sidecar JSON keyed by doc_id so two uploads with the same source_name
+    # don't overwrite each other.
+    save_path = os.path.join(STORE_DIR, f"{doc_id}_enriched.json")
     
     try:
         with open(save_path, "w", encoding="utf-8") as f:
